@@ -9,5 +9,6 @@ regexes = [
   '''secret-(local|de-la-ci|de-test)[a-z0-9-]*''',
   '''demonstration-stockpilot''',
   '''mot-de-passe-de-(test|charge)[a-z0-9-]*''',
+  '''jeton-qui-n-existe-pas[a-z0-9-]*''',
   '''postgresql://stockpilot(_app)?:stockpilot(_app)?@''',
 ]

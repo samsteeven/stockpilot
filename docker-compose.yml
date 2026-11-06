@@ -64,8 +64,9 @@ services:
       - 'host.docker.internal:host-gateway'
     ports:
       - '127.0.0.1:9090:9090'
+    # Prometheus ne tourne pas en root : son répertoire de données en mémoire doit lui être accessible.
     tmpfs:
-      - /prometheus
+      - /prometheus:mode=1777
     volumes:
       - ./infrastructure/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./infrastructure/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -83,7 +84,7 @@ services:
     ports:
       - '127.0.0.1:3001:3000'
     tmpfs:
-      - /var/lib/grafana
+      - /var/lib/grafana:mode=1777
     volumes:
       - ./infrastructure/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infrastructure/observability/grafana/dashboards:/etc/grafana/dashboards:ro
