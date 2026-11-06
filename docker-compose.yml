@@ -1,0 +1,39 @@
+name: stockpilot
+
+# Développement local : PostgreSQL et Redis, données en mémoire (tmpfs) pour ne pas grossir le disque de Docker.
+#   docker compose up -d
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: stockpilot-postgres
+    environment:
+      # Propriétaire des tables : sert aux migrations seulement. L'application utilise stockpilot_app (voir init).
+      POSTGRES_USER: stockpilot
+      POSTGRES_PASSWORD: stockpilot
+      POSTGRES_DB: stockpilot
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5437}:5432'
+    tmpfs:
+      - /var/lib/postgresql
+    volumes:
+      - ./infrastructure/docker/postgres-init.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U stockpilot -d stockpilot']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8.6-alpine
+    container_name: stockpilot-redis
+    # Les jobs BullMQ survivent à un redémarrage de Redis en production (AOF) ; ici, tout est en mémoire.
+    command: ['redis-server', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6380}:6379'
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20

@@ -1,0 +1,162 @@
+// Schéma StockPilot. Les règles que la base doit garantir seule (quantités, isolation entre entreprises,
+// immuabilité des mouvements) sont dans les migrations SQL : contraintes CHECK, Row-Level Security, déclencheurs.
+//
+// Isolation : chaque table métier porte tenant_id, et les références entre tables passent par des clés
+// composites (tenant_id, id) : une ligne ne peut pas pointer vers une ligne d'une autre entreprise.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../libs/database/src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
+
+enum StockMovementType {
+  RECEIPT
+  SALE
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  RETURN
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  warehouses   Warehouse[]
+  products     Product[]
+  reservations Reservation[]
+
+  @@map("tenants")
+}
+
+model Warehouse {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  code      String
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id])
+  stocks StockItem[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@map("warehouses")
+}
+
+model Product {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  sku       String
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  variants ProductVariant[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, id])
+  @@index([tenantId, active])
+  @@map("products")
+}
+
+model ProductVariant {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  sku       String
+  name      String
+
+  product Product     @relation(fields: [tenantId, productId], references: [tenantId, id])
+  stocks  StockItem[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, id])
+  @@map("product_variants")
+}
+
+model StockItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  warehouseId      String   @map("warehouse_id") @db.Uuid
+  variantId        String   @map("variant_id") @db.Uuid
+  quantityOnHand   Int      @default(0) @map("quantity_on_hand")
+  quantityReserved Int      @default(0) @map("quantity_reserved")
+  version          Int      @default(0)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  warehouse    Warehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  variant      ProductVariant    @relation(fields: [tenantId, variantId], references: [tenantId, id])
+  reservations ReservationItem[]
+  movements    StockMovement[]
+
+  @@unique([tenantId, warehouseId, variantId])
+  @@unique([tenantId, id])
+  @@index([tenantId, variantId])
+  @@map("stock_items")
+}
+
+model Reservation {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  // Référence fournie par l'appelant (la commande) : la même référence ne réserve qu'une fois.
+  reference   String
+  status      ReservationStatus @default(ACTIVE)
+  expiresAt   DateTime          @map("expires_at") @db.Timestamptz(3)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  confirmedAt DateTime?         @map("confirmed_at") @db.Timestamptz(3)
+  endedAt     DateTime?         @map("ended_at") @db.Timestamptz(3)
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id])
+  items  ReservationItem[]
+
+  @@unique([tenantId, reference])
+  @@unique([tenantId, id])
+  @@index([status, expiresAt])
+  @@map("reservations")
+}
+
+model ReservationItem {
+  id            String @id @default(uuid()) @db.Uuid
+  tenantId      String @map("tenant_id") @db.Uuid
+  reservationId String @map("reservation_id") @db.Uuid
+  stockItemId   String @map("stock_item_id") @db.Uuid
+  quantity      Int
+
+  reservation Reservation @relation(fields: [tenantId, reservationId], references: [tenantId, id])
+  stockItem   StockItem   @relation(fields: [tenantId, stockItemId], references: [tenantId, id])
+
+  @@unique([reservationId, stockItemId])
+  @@map("reservation_items")
+}
+
+model StockMovement {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  stockItemId String            @map("stock_item_id") @db.Uuid
+  type        StockMovementType
+  // Signé : + entrée, - sortie. La somme des mouvements d'une ligne vaut son stock physique.
+  quantity    Int
+  referenceId String?           @map("reference_id") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  stockItem StockItem @relation(fields: [tenantId, stockItemId], references: [tenantId, id])
+
+  @@index([tenantId, stockItemId, createdAt])
+  @@map("stock_movements")
+}

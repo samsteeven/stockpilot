@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/worker"
+    },
+    {
+      "path": "./libs/database"
+    },
+    {
+      "path": "./libs/inventory"
+    },
+    {
+      "path": "./libs/testing"
+    }
+  ],
+  "compilerOptions": {}
+}

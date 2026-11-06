@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    # Format, lint, types et construction des applications.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NX_NO_CLOUD: 'true'
+      NX_DAEMON: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Format
+        run: npx nx format:check --all
+      - name: Lint, types, construction
+        run: npx nx run-many -t lint typecheck build
+      - name: Schéma Prisma valide
+        run: npx prisma validate
+
+  tests:
+    # Tests d'intégration contre PostgreSQL 18 et Redis réels, démarrés par Testcontainers.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NX_NO_CLOUD: 'true'
+      NX_DAEMON: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Moteur de stock, API et worker
+        run: npx nx run-many -t test --parallel=1
+
+  demo:
+    # La plateforme construite, comme en production : migrations, données de démonstration, API et worker, puis
+    # 20 commandes simultanées pour 5 unités et l'expiration des réservations par le worker.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NX_NO_CLOUD: 'true'
+      NX_DAEMON: 'false'
+      DATABASE_URL: postgresql://stockpilot:stockpilot@127.0.0.1:5437/stockpilot
+      APP_DATABASE_URL: postgresql://stockpilot_app:stockpilot_app@127.0.0.1:5437/stockpilot
+      REDIS_URL: redis://127.0.0.1:6380
+      RESERVATION_TTL_SECONDS: '5'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: PostgreSQL et Redis
+        run: |
+          docker compose up -d --wait
+          npx prisma migrate deploy
+          npm run db:seed
+      - name: La base migrée correspond au schéma (aucune modification sans migration)
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+      - name: API et worker construits
+        run: |
+          npx nx run-many -t build -p api worker
+          node apps/api/dist/main.js > api.log 2>&1 &
+          node apps/worker/dist/main.js > worker.log 2>&1 &
+          until curl -sf http://127.0.0.1:3000/health/ready > /dev/null; do sleep 1; done
+      - name: Vingt commandes simultanées pour cinq unités
+        run: node scripts/demo-concurrence.mjs http://127.0.0.1:3000
+      - name: Le worker expire les réservations à leur échéance
+        run: |
+          for i in $(seq 30); do
+            reserved=$(curl -sf -H 'x-tenant-id: 0a1e5c3e-5b7a-4c1e-9f00-000000000001' \
+              'http://127.0.0.1:3000/api/v1/inventory?warehouseId=0a1e5c3e-5b7a-4c1e-9f00-0000000000a1' \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).reduce((n,l)=>n+l.reserved,0)))")
+            [ "$reserved" = "0" ] && { echo "stock rendu après expiration"; exit 0; }
+            sleep 1
+          done
+          echo "les réservations n'ont pas expiré"; exit 1
+      - name: Journaux
+        if: always()
+        run: tail -n 50 api.log worker.log
