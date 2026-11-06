@@ -17,6 +17,15 @@
     },
     {
       "path": "./libs/testing"
+    },
+    {
+      "path": "./libs/identity"
+    },
+    {
+      "path": "./libs/tenancy"
+    },
+    {
+      "path": "./libs/catalog"
     }
   ],
   "compilerOptions": {}

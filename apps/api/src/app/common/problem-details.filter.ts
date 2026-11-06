@@ -6,7 +6,27 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import {
+  DuplicateSkuError,
+  DuplicateWarehouseCodeError,
+  ProductNotFoundError,
+} from '@stockpilot/catalog';
 import { InvalidTenantError } from '@stockpilot/database';
+import {
+  EmailTakenError,
+  InvalidAccessTokenError,
+  InvalidCredentialsError,
+  InvalidSessionError,
+} from '@stockpilot/identity';
+import {
+  AlreadyMemberError,
+  InvitationEmailMismatchError,
+  InvitationInvalidError,
+  LastOwnerError,
+  MemberNotFoundError,
+  RoleChangeForbiddenError,
+  TenantNotFoundError,
+} from '@stockpilot/tenancy';
 import {
   InsufficientStockError,
   ReservationExpiredError,
@@ -40,6 +60,56 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       .status(problem.status)
       .type('application/problem+json')
       .send(problem);
+  }
+
+  /** Erreurs du domaine sans détail particulier : un statut et un titre. */
+  private simpleProblem(error: unknown): Problem | undefined {
+    const table: [new (...args: never[]) => Error, number, string][] = [
+      [
+        InvalidCredentialsError,
+        HttpStatus.UNAUTHORIZED,
+        'E-mail ou mot de passe incorrect',
+      ],
+      [
+        InvalidSessionError,
+        HttpStatus.UNAUTHORIZED,
+        'Session invalide ou expirée',
+      ],
+      [
+        InvalidAccessTokenError,
+        HttpStatus.UNAUTHORIZED,
+        'Jeton invalide ou expiré',
+      ],
+      [EmailTakenError, HttpStatus.CONFLICT, 'Adresse déjà utilisée'],
+      [TenantNotFoundError, HttpStatus.NOT_FOUND, 'Entreprise introuvable'],
+      [MemberNotFoundError, HttpStatus.NOT_FOUND, 'Membre introuvable'],
+      [ProductNotFoundError, HttpStatus.NOT_FOUND, 'Produit introuvable'],
+      [
+        RoleChangeForbiddenError,
+        HttpStatus.FORBIDDEN,
+        'Changement de rôle interdit',
+      ],
+      [
+        InvitationEmailMismatchError,
+        HttpStatus.FORBIDDEN,
+        'Invitation destinée à une autre adresse',
+      ],
+      [LastOwnerError, HttpStatus.CONFLICT, 'Dernier propriétaire'],
+      [AlreadyMemberError, HttpStatus.CONFLICT, 'Déjà membre'],
+      [InvitationInvalidError, HttpStatus.GONE, 'Invitation inutilisable'],
+      [DuplicateSkuError, HttpStatus.CONFLICT, 'Référence déjà utilisée'],
+      [
+        DuplicateWarehouseCodeError,
+        HttpStatus.CONFLICT,
+        'Code d’entrepôt déjà utilisé',
+      ],
+    ];
+    for (const [type, status, title] of table) {
+      if (error instanceof type) {
+        return { type: 'about:blank', title, status, detail: error.message };
+      }
+    }
+    return undefined;
   }
 
   private toProblem(error: unknown): Problem {
@@ -83,6 +153,8 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         detail: error.message,
       };
     }
+    const simple = this.simpleProblem(error);
+    if (simple) return simple;
     if (error instanceof InvalidTenantError) {
       return {
         type: 'about:blank',

@@ -16,7 +16,7 @@ import {
   StockService,
 } from '@stockpilot/inventory';
 import type { Response } from 'express';
-import { CurrentTenant } from '../common/current-tenant.decorator';
+import { CurrentTenant, RequirePermission } from '../common/access';
 import { API_CONFIG } from '../tokens';
 import type { ApiConfig } from '../config';
 import { ReceiveDto, ReserveDto, StockQueryDto } from './dto';
@@ -25,11 +25,13 @@ import { ReceiveDto, ReserveDto, StockQueryDto } from './dto';
 export class InventoryController {
   constructor(private readonly stock: StockService) {}
 
+  @RequirePermission('stock:read')
   @Get()
   list(@CurrentTenant() tenantId: string, @Query() query: StockQueryDto) {
     return this.stock.list(tenantId, query.warehouseId);
   }
 
+  @RequirePermission('stock:receive')
   @Post('receipts')
   receive(@CurrentTenant() tenantId: string, @Body() body: ReceiveDto) {
     return this.stock.receive(tenantId, body);
@@ -44,6 +46,7 @@ export class ReservationsController {
   ) {}
 
   /** 201 à la création, 200 quand la même référence avait déjà réservé (requête rejouée). */
+  @RequirePermission('reservations:write')
   @Post()
   async reserve(
     @CurrentTenant() tenantId: string,
@@ -58,6 +61,7 @@ export class ReservationsController {
     return toView(reservation);
   }
 
+  @RequirePermission('stock:read')
   @Get(':id')
   async get(
     @CurrentTenant() tenantId: string,
@@ -66,6 +70,7 @@ export class ReservationsController {
     return toView(await this.reservations.get(tenantId, id));
   }
 
+  @RequirePermission('reservations:write')
   @Post(':id/confirm')
   @HttpCode(200)
   async confirm(
@@ -75,6 +80,7 @@ export class ReservationsController {
     return toView((await this.reservations.confirm(tenantId, id)).reservation);
   }
 
+  @RequirePermission('reservations:write')
   @Post(':id/release')
   @HttpCode(200)
   async release(

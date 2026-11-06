@@ -23,6 +23,15 @@
   ],
   "references": [
     {
+      "path": "../../libs/catalog/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/tenancy/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/identity/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/inventory/tsconfig.lib.json"
     },
     {

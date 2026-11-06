@@ -6,9 +6,16 @@
  *
  * Écrit avec le rôle propriétaire (les migrations), hors Row-Level Security. Rejouable : rien n'est dupliqué.
  */
+import * as argon2 from 'argon2';
 import pg from 'pg';
 
 const TENANT = '0a1e5c3e-5b7a-4c1e-9f00-000000000001';
+const OWNER = {
+  id: '0a1e5c3e-5b7a-4c1e-9f00-0000000000d1',
+  email: 'demo@atelier-nova.example',
+  // Compte de démonstration local : mot de passe public, jamais à utiliser hors d'un poste ou d'une CI.
+  password: 'demonstration-stockpilot',
+};
 const WAREHOUSES = {
   PAR: { id: '0a1e5c3e-5b7a-4c1e-9f00-0000000000a1', name: 'Paris' },
   LYO: { id: '0a1e5c3e-5b7a-4c1e-9f00-0000000000a2', name: 'Lyon' },
@@ -60,6 +67,18 @@ async function main(): Promise<void> {
       `INSERT INTO tenants (id, name, slug) VALUES ($1, 'Atelier Nova', 'atelier-nova') ON CONFLICT (id) DO NOTHING`,
       [TENANT],
     );
+    await client.query(
+      `INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+      [
+        OWNER.id,
+        OWNER.email,
+        await argon2.hash(OWNER.password, { type: argon2.argon2id }),
+      ],
+    );
+    await client.query(
+      `INSERT INTO tenant_memberships (tenant_id, user_id, role) VALUES ($1, $2, 'OWNER') ON CONFLICT DO NOTHING`,
+      [TENANT, OWNER.id],
+    );
     for (const [code, warehouse] of Object.entries(WAREHOUSES)) {
       await client.query(
         'INSERT INTO warehouses (id, tenant_id, code, name) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
@@ -101,7 +120,9 @@ async function main(): Promise<void> {
   } finally {
     await client.end();
   }
-  console.log(`Atelier Nova prête. En-tête à envoyer : X-Tenant-Id: ${TENANT}`);
+  console.log(
+    `Atelier Nova prête : ${OWNER.email} / ${OWNER.password} (propriétaire), X-Tenant-Id: ${TENANT}`,
+  );
   console.log(
     `Entrepôt de Paris : ${WAREHOUSES.PAR.id} ; casque noir : ${PRODUCTS[0].variants[0].id} (5 en stock)`,
   );

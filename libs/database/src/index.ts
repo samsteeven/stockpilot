@@ -6,8 +6,15 @@ export {
   Prisma,
   ReservationStatus,
   StockMovementType,
+  TenantRole,
 } from './generated/prisma/client.js';
 export type {
+  Invitation,
+  Product,
+  ProductVariant,
+  TenantMembership,
+  User,
+  Warehouse,
   Reservation,
   ReservationItem,
   StockItem,

@@ -6,6 +6,14 @@ export interface ApiConfig {
   databasePoolSize: number;
   redisUrl: string;
   reservationTtlSeconds: number;
+  /** Secret HS256 des jetons d'accès, 32 caractères au moins. */
+  jwtSecret: string;
+  accessTokenMinutes: number;
+  refreshTokenDays: number;
+  /** Cookie de session en HTTPS seulement ; à désactiver uniquement en développement local (http). */
+  cookieSecure: boolean;
+  /** Tentatives d'inscription et de connexion par minute et par adresse IP. */
+  authRateLimitPerMinute: number;
 }
 
 export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -15,6 +23,11 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     databasePoolSize: integer(env, 'DATABASE_POOL_SIZE', 10),
     redisUrl: required(env, 'REDIS_URL'),
     reservationTtlSeconds: integer(env, 'RESERVATION_TTL_SECONDS', 900),
+    jwtSecret: required(env, 'JWT_SECRET'),
+    accessTokenMinutes: integer(env, 'ACCESS_TOKEN_MINUTES', 15),
+    refreshTokenDays: integer(env, 'REFRESH_TOKEN_DAYS', 14),
+    cookieSecure: env['COOKIE_SECURE'] !== 'false',
+    authRateLimitPerMinute: integer(env, 'AUTH_RATE_LIMIT_PER_MINUTE', 10),
   };
 }
 

@@ -2,6 +2,7 @@
 
 const UNIQUE_VIOLATION = '23505';
 const CHECK_VIOLATION = '23514';
+const RESTRICT_VIOLATION = '23001';
 
 function codes(error: unknown): string[] {
   const found: string[] = [];
@@ -41,4 +42,9 @@ export function isUniqueViolation(error: unknown): boolean {
 /** Contrainte CHECK violée (23514). */
 export function isCheckViolation(error: unknown): boolean {
   return codes(error).includes(CHECK_VIOLATION);
+}
+
+/** Règle de la base qui refuse l'opération (déclencheur : dernier propriétaire, mouvement immuable). */
+export function isRestrictViolation(error: unknown): boolean {
+  return codes(error).includes(RESTRICT_VIOLATION);
 }

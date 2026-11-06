@@ -14,6 +14,14 @@ datasource db {
   provider = "postgresql"
 }
 
+enum TenantRole {
+  OWNER
+  ADMIN
+  WAREHOUSE_MANAGER
+  OPERATOR
+  VIEWER
+}
+
 enum ReservationStatus {
   ACTIVE
   CONFIRMED
@@ -39,8 +47,75 @@ model Tenant {
   warehouses   Warehouse[]
   products     Product[]
   reservations Reservation[]
+  memberships  TenantMembership[]
+  invitations  Invitation[]
 
   @@map("tenants")
+}
+
+// Compte : global (une personne peut appartenir à plusieurs entreprises), pas une donnée d'entreprise.
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  // Toujours en minuscules (normalisé par l'application).
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  memberships   TenantMembership[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+// Jeton de renouvellement : seule son empreinte est stockée. Une famille = une session ; un jeton rejoué
+// (déjà échangé) révoque toute la famille.
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  familyId  String    @map("family_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model TenantMembership {
+  tenantId  String     @map("tenant_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  role      TenantRole
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, userId])
+  @@index([userId])
+  @@map("tenant_memberships")
+}
+
+// Invitation à usage unique : seule l'empreinte du jeton est stockée, le lien n'est montré qu'une fois.
+model Invitation {
+  id         String     @id @default(uuid()) @db.Uuid
+  tenantId   String     @map("tenant_id") @db.Uuid
+  email      String
+  role       TenantRole
+  tokenHash  String     @unique @map("token_hash")
+  invitedBy  String     @map("invited_by") @db.Uuid
+  expiresAt  DateTime   @map("expires_at") @db.Timestamptz(3)
+  acceptedAt DateTime?  @map("accepted_at") @db.Timestamptz(3)
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("invitations")
 }
 
 model Warehouse {

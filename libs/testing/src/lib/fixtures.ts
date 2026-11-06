@@ -29,17 +29,23 @@ export interface TenantFixture {
 }
 
 /** stock : { "PAR:CASQUE": 5 } = 5 casques à Paris. */
+/**
+ * existingTenantId : remplit une entreprise déjà créée (par exemple par l'inscription via l'API) au lieu d'en
+ * créer une.
+ */
 export async function createTenant(
   pool: Pool,
   stock: Record<string, number>,
+  existingTenantId?: string,
 ): Promise<TenantFixture> {
-  const tenantId = randomUUID();
+  const tenantId = existingTenantId ?? randomUUID();
   const suffix = tenantId.slice(0, 8);
-  await pool.query('INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)', [
-    tenantId,
-    `Test ${suffix}`,
-    `t-${suffix}`,
-  ]);
+  if (!existingTenantId) {
+    await pool.query(
+      'INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)',
+      [tenantId, `Test ${suffix}`, `t-${suffix}`],
+    );
+  }
   const productId = randomUUID();
   await pool.query(
     'INSERT INTO products (id, tenant_id, sku, name) VALUES ($1, $2, $3, $4)',
