@@ -336,7 +336,7 @@ jobs:
             docker run --rm -v "$PWD:/src:ro" -w /src aquasec/trivy:0.76.1 config --quiet \
               --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml --exit-code 1 "$target"
           done
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Images
         run: |
           docker buildx build --target runtime --load --tag stockpilot:ci \
