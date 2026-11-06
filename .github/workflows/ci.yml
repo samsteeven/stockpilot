@@ -154,7 +154,7 @@ jobs:
       - name: Cypress
         run: npx cypress run
         working-directory: apps/web-e2e
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: cypress-captures
@@ -190,7 +190,7 @@ jobs:
         run: npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --omit dev --output-format JSON --output-file sbom.cdx.json
       - name: Licences
         run: node scripts/verifier-licences.mjs sbom.cdx.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom
           path: sbom.cdx.json
@@ -295,7 +295,7 @@ jobs:
           DURATION: 30s
           P95_READ: '500'
           P95_WRITE: '1000'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: k6
@@ -368,7 +368,7 @@ jobs:
           $trivy image --severity HIGH,CRITICAL --ignore-unfixed --no-progress stockpilot:ci
           $trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress --quiet stockpilot:ci
           $trivy image --format cyclonedx --output /out/sbom-image.cdx.json --quiet stockpilot:ci
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-image
           path: sbom-image.cdx.json
