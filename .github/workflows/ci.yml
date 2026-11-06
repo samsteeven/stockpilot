@@ -18,8 +18,8 @@ jobs:
       NX_DAEMON: 'false'
       CYPRESS_INSTALL_BINARY: '0'
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: npm
@@ -40,8 +40,8 @@ jobs:
       NX_DAEMON: 'false'
       CYPRESS_INSTALL_BINARY: '0'
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: npm
@@ -67,8 +67,8 @@ jobs:
       SMTP_URL: smtp://127.0.0.1:1025
       COOKIE_SECURE: 'false'
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: npm
@@ -127,12 +127,12 @@ jobs:
       AUTH_RATE_LIMIT_PER_MINUTE: '1000'
       NG_CLI_ANALYTICS: 'false'
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: npm
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/Cypress
           key: cypress-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -154,7 +154,7 @@ jobs:
       - name: Cypress
         run: npx cypress run
         working-directory: apps/web-e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: cypress-captures
@@ -163,3 +163,144 @@ jobs:
       - name: Journaux
         if: always()
         run: tail -n 40 api.log worker.log web.log
+
+  securite:
+    # Chaîne d'approvisionnement : signatures du registre npm, vulnérabilités connues, SBOM et licences, secrets
+    # dans tout l'historique git.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CYPRESS_INSTALL_BINARY: '0'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Signatures et attestations du registre npm
+        run: npm audit signatures
+      - name: Vulnérabilités des dépendances livrées en production (élevées et critiques bloquantes)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Vulnérabilités des outils de développement (critiques bloquantes, le reste signalé)
+        run: npm audit --audit-level=critical
+      - name: SBOM CycloneDX des dépendances de production
+        run: npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --omit dev --output-format JSON --output-file sbom.cdx.json
+      - name: Licences
+        run: node scripts/verifier-licences.mjs sbom.cdx.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom
+          path: sbom.cdx.json
+      - name: Secrets dans l'historique (gitleaks)
+        run: >-
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1
+          git /repo --config /repo/.gitleaks.toml --redact --verbose
+
+  observabilite:
+    # Alertes testées (promtool), puis la chaîne complète : API et worker construits, trafic de démonstration,
+    # Prometheus qui les lit, Grafana qui affiche le tableau de bord.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NX_NO_CLOUD: 'true'
+      NX_DAEMON: 'false'
+      CYPRESS_INSTALL_BINARY: '0'
+      DATABASE_URL: postgresql://stockpilot:stockpilot@127.0.0.1:5437/stockpilot
+      APP_DATABASE_URL: postgresql://stockpilot_app:stockpilot_app@127.0.0.1:5437/stockpilot
+      REDIS_URL: redis://127.0.0.1:6380
+      JWT_SECRET: secret-de-la-ci-pour-les-jetons-d-acces-0123456789
+      COOKIE_SECURE: 'false'
+      PAYMENT_WEBHOOK_SECRET: secret-de-la-ci-du-prestataire-de-paiement-0123
+      AUTH_RATE_LIMIT_PER_MINUTE: '1000'
+      RESERVATION_TTL_SECONDS: '5'
+      SMTP_URL: smtp://127.0.0.1:1025
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Configuration Prometheus et tests des alertes
+        working-directory: infrastructure/observability
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD:/cfg:ro" -w /cfg prom/prometheus:v3.15.0 check config prometheus.yml
+          docker run --rm --entrypoint promtool -v "$PWD:/cfg:ro" -w /cfg prom/prometheus:v3.15.0 test rules alerts.test.yml
+      - run: npm ci
+      - name: PostgreSQL, Redis, Mailpit, Prometheus et Grafana
+        run: |
+          docker compose --profile observabilite up -d --wait
+          npx prisma migrate deploy
+          npm run db:seed
+      - name: API et worker construits, métriques exposées
+        run: |
+          npx nx run-many -t build -p api worker
+          METRICS_PORT=9464 node apps/api/dist/main.js > api.log 2>&1 &
+          METRICS_PORT=9465 node apps/worker/dist/main.js > worker.log 2>&1 &
+          until curl -sf http://127.0.0.1:3000/health/ready > /dev/null; do sleep 1; done
+      - name: Trafic de démonstration
+        run: node scripts/demo-commande.mjs http://127.0.0.1:3000
+      - name: Prometheus, alertes et Grafana
+        run: node scripts/verifier-observabilite.mjs
+      - name: Journaux (JSON)
+        if: always()
+        run: tail -n 30 api.log worker.log
+
+  charge:
+    # Tests de charge k6 courts, comme garde-fou : exactitude sous contention (aucune survente) et latences du
+    # parcours. Seuils relâchés pour un exécuteur partagé ; les mesures de référence sont dans tests/load.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NX_NO_CLOUD: 'true'
+      NX_DAEMON: 'false'
+      CYPRESS_INSTALL_BINARY: '0'
+      DATABASE_URL: postgresql://stockpilot:stockpilot@127.0.0.1:5437/stockpilot
+      APP_DATABASE_URL: postgresql://stockpilot_app:stockpilot_app@127.0.0.1:5437/stockpilot
+      REDIS_URL: redis://127.0.0.1:6380
+      JWT_SECRET: secret-de-la-ci-pour-les-jetons-d-acces-0123456789
+      COOKIE_SECURE: 'false'
+      PAYMENT_WEBHOOK_SECRET: secret-de-la-ci-du-prestataire-de-paiement-0123
+      AUTH_RATE_LIMIT_PER_MINUTE: '1000'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+        with:
+          k6-version: '2.2.0'
+      - run: npm ci
+      - name: PostgreSQL et Redis
+        run: |
+          docker compose up -d --wait postgres redis
+          npx prisma migrate deploy
+      - name: API et worker construits
+        run: |
+          npx nx run-many -t build -p api worker
+          node apps/api/dist/main.js > api.log 2>&1 &
+          node apps/worker/dist/main.js > worker.log 2>&1 &
+          until curl -sf http://127.0.0.1:3000/health/ready > /dev/null; do sleep 1; done
+      - name: Contention, 200 acheteurs pour 50 unités
+        run: k6 run --quiet --summary-export contention.json tests/load/contention.js
+        env:
+          P95_CONTENTION: '4000'
+      - name: Parcours, 20 vendeurs pendant 30 s
+        run: k6 run --quiet --summary-export parcours.json tests/load/parcours.js
+        env:
+          VUS: '20'
+          DURATION: 30s
+          P95_READ: '500'
+          P95_WRITE: '1000'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: k6
+          path: '*.json'
+          if-no-files-found: ignore
+      - name: Journaux
+        if: always()
+        run: tail -n 30 api.log worker.log

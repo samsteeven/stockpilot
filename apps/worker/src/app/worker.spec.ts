@@ -7,6 +7,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { PrismaService, TenantDatabase } from '@stockpilot/database';
 import { ReservationService } from '@stockpilot/inventory';
+import { METRICS, type Metrics } from '@stockpilot/observability';
 import { OrderService, PaymentService, signPayload } from '@stockpilot/orders';
 import { ShipmentService } from '@stockpilot/shipping';
 import { SMTPServer } from 'smtp-server';
@@ -19,6 +20,7 @@ import {
 } from '@stockpilot/testing';
 import type { Pool } from 'pg';
 import { WorkerModule } from './app.module';
+import { MetricsRefresher } from './metrics-refresher';
 
 let worker: INestApplicationContext;
 let pool: Pool;
@@ -72,6 +74,7 @@ beforeAll(async () => {
       outboxPollMs: 100,
       smtpUrl: `smtp://127.0.0.1:${smtpPort}`,
       mailFrom: 'StockPilot <no-reply@stockpilot.test>',
+      logLevel: 'warn',
     }),
     { logger: ['error', 'warn'] },
   );
@@ -296,4 +299,35 @@ it('serveur SMTP en panne : l’échec est noté, le job est rejoué, le client 
   );
   expect(sent).toEqual({ status: 'SENT', attempts: 2 });
   expect(mailsTo(email)).toHaveLength(1);
+});
+
+it('métriques : événements traités par type et issue, retard de l’outbox, jobs par file', async () => {
+  const email = `client-${randomUUID().slice(0, 8)}@example.com`;
+  const { tenantId, order, orders } = await paidOrder(email);
+  await waitFor(
+    () => orders.get(tenantId, order.id),
+    (o) => !!o.shipment,
+  );
+  const metrics = worker.get<Metrics>(METRICS);
+  // Le compteur est incrémenté à la fin du traitement (après l'envoi du message).
+  const events = await waitFor(
+    () =>
+      metrics.registry.getSingleMetricAsString(
+        'stockpilot_domain_events_total',
+      ),
+    (text) => /type="order.confirmed",outcome="sent"/.test(text),
+  );
+  expect(events).toMatch(/type="order.confirmed",outcome="created"/);
+  expect(events).toMatch(/type="order.confirmed",outcome="sent"/);
+
+  await worker.get(MetricsRefresher).refresh();
+  const backlog = await metrics.registry.getSingleMetricAsString(
+    'stockpilot_outbox_oldest_age_seconds',
+  );
+  expect(backlog).toMatch(
+    /stockpilot_outbox_oldest_age_seconds\{service="worker"\} [0-9.e+-]+/,
+  );
+  expect(
+    await metrics.registry.getSingleMetricAsString('stockpilot_queue_jobs'),
+  ).toContain('queue="domain-events"');
 });

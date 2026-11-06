@@ -16,6 +16,10 @@ export interface ApiConfig {
   authRateLimitPerMinute: number;
   /** Secret partagé avec le prestataire de paiement, 32 caractères au moins. */
   paymentWebhookSecret: string;
+  /** Niveau des journaux (info par défaut ; warn dans les tests). */
+  logLevel?: string;
+  /** Port des métriques Prometheus (pas exposé au public) ; absent : pas de serveur de métriques. */
+  metricsPort?: number;
 }
 
 export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -31,6 +35,10 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     cookieSecure: env['COOKIE_SECURE'] !== 'false',
     authRateLimitPerMinute: integer(env, 'AUTH_RATE_LIMIT_PER_MINUTE', 10),
     paymentWebhookSecret: required(env, 'PAYMENT_WEBHOOK_SECRET'),
+    logLevel: env['LOG_LEVEL'] || 'info',
+    metricsPort: env['METRICS_PORT']
+      ? integer(env, 'METRICS_PORT', 9464)
+      : undefined,
   };
 }
 

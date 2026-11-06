@@ -1,0 +1,17 @@
+# Prometheus en local et dans la CI : l'API et le worker tournent sur l'hôte, leurs métriques sur des ports
+# séparés (jamais derrière le répartiteur de charge public). En production (incrément 6), mêmes cibles via la
+# découverte de services ECS.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: api
+    static_configs:
+      - targets: ['host.docker.internal:9464']
+  - job_name: worker
+    static_configs:
+      - targets: ['host.docker.internal:9465']

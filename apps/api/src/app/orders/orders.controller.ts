@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  Inject,
   Param,
   ParseUUIDPipe,
   Post,
@@ -13,6 +14,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { AuditService } from '@stockpilot/audit';
+import { METRICS, type Metrics } from '@stockpilot/observability';
 import {
   OrderService,
   PaymentService,
@@ -36,7 +38,10 @@ import {
 
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly orders: OrderService) {}
+  constructor(
+    private readonly orders: OrderService,
+    @Inject(METRICS) private readonly metrics: Metrics,
+  ) {}
 
   /**
    * Crée une commande : réserve le stock et attend le paiement. L'en-tête Idempotency-Key est obligatoire : la
@@ -62,6 +67,7 @@ export class OrdersController {
       { ...body, idempotencyKey: key },
     );
     response.status(201);
+    this.metrics.orders.inc({ outcome: replayed ? 'replayed' : 'created' });
     if (replayed) response.setHeader('Idempotent-Replayed', 'true');
     return order;
   }
@@ -113,16 +119,24 @@ export class OrdersController {
  */
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly payments: PaymentService) {}
+  constructor(
+    private readonly payments: PaymentService,
+    @Inject(METRICS) private readonly metrics: Metrics,
+  ) {}
 
   @Public()
   @Post('webhook')
   @HttpCode(200)
-  webhook(
+  async webhook(
     @Req() request: Request & { rawBody?: Buffer },
     @Headers(SIGNATURE_HEADER) signature: string | undefined,
   ) {
-    return this.payments.handleNotification(request.rawBody, signature);
+    const result = await this.payments.handleNotification(
+      request.rawBody,
+      signature,
+    );
+    this.metrics.paymentNotifications.inc({ outcome: result.outcome });
+    return result;
   }
 }
 

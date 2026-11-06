@@ -1,0 +1,13 @@
+# Recherche de secrets dans tout l'historique (gitleaks, dans la CI). Règles par défaut, plus une liste de valeurs
+# volontairement publiques : comptes et secrets de démonstration, de test et de CI, documentés comme tels.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Valeurs de démonstration, de test et de CI (jamais utilisées en production)"
+regexes = [
+  '''secret-(local|de-la-ci|de-test)[a-z0-9-]*''',
+  '''demonstration-stockpilot''',
+  '''mot-de-passe-de-(test|charge)[a-z0-9-]*''',
+  '''postgresql://stockpilot(_app)?:stockpilot(_app)?@''',
+]

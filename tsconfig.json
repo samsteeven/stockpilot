@@ -41,6 +41,9 @@
     },
     {
       "path": "./libs/notifications"
+    },
+    {
+      "path": "./libs/observability"
     }
   ],
   "compilerOptions": {}

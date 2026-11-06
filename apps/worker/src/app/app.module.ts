@@ -5,6 +5,8 @@ import {
   ReservationExpiryQueueModule,
 } from '@stockpilot/inventory';
 import { DomainEventsModule } from '@stockpilot/messaging';
+import { loggingParams, METRICS, Metrics } from '@stockpilot/observability';
+import { LoggerModule } from 'nestjs-pino';
 import { NotificationsModule } from '@stockpilot/notifications';
 import { OrdersModule } from '@stockpilot/orders';
 import { ShippingModule } from '@stockpilot/shipping';
@@ -13,6 +15,7 @@ import {
   OUTBOX_POLL_MS,
   OutboxRelay,
 } from './domain-events.processor';
+import { MetricsRefresher } from './metrics-refresher';
 import {
   ReservationExpiryProcessor,
   SweepScheduler,
@@ -28,14 +31,21 @@ export interface WorkerConfig {
   /** smtp://hôte:port des messages aux clients ; absent : messages journalisés seulement. */
   smtpUrl?: string;
   mailFrom: string;
+  logLevel?: string;
 }
 
 @Module({})
 export class WorkerModule {
-  static forRoot(config: WorkerConfig): DynamicModule {
+  static forRoot(
+    config: WorkerConfig,
+    metrics = new Metrics('worker'),
+  ): DynamicModule {
     return {
       module: WorkerModule,
       imports: [
+        LoggerModule.forRoot(
+          loggingParams({ service: 'worker', level: config.logLevel }),
+        ),
         DatabaseModule.forRoot({
           url: config.appDatabaseUrl,
           poolSize: config.databasePoolSize,
@@ -58,6 +68,8 @@ export class WorkerModule {
         { provide: OUTBOX_POLL_MS, useValue: config.outboxPollMs },
         OutboxRelay,
         DomainEventsProcessor,
+        { provide: METRICS, useValue: metrics },
+        MetricsRefresher,
       ],
     };
   }

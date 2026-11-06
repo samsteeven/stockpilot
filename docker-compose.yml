@@ -47,3 +47,43 @@ services:
     ports:
       - '127.0.0.1:${SMTP_PORT:-1025}:1025'
       - '127.0.0.1:${MAILPIT_PORT:-8025}:8025'
+
+  # Observabilité, à la demande : docker compose --profile observabilite up -d
+  # Prometheus (http://localhost:9090) lit les métriques de l'API (9464) et du worker (9465) lancés sur l'hôte ;
+  # Grafana (http://localhost:3001, sans connexion en local) affiche le tableau de bord StockPilot.
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    container_name: stockpilot-prometheus
+    profiles: [observabilite]
+    command:
+      [
+        '--config.file=/etc/prometheus/prometheus.yml',
+        '--storage.tsdb.path=/prometheus',
+      ]
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    ports:
+      - '127.0.0.1:9090:9090'
+    tmpfs:
+      - /prometheus
+    volumes:
+      - ./infrastructure/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    container_name: stockpilot-grafana
+    profiles: [observabilite]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+    ports:
+      - '127.0.0.1:3001:3000'
+    tmpfs:
+      - /var/lib/grafana
+    volumes:
+      - ./infrastructure/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/observability/grafana/dashboards:/etc/grafana/dashboards:ro

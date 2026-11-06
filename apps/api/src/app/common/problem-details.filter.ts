@@ -4,8 +4,10 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Inject,
   Logger,
 } from '@nestjs/common';
+import { METRICS, type Metrics } from '@stockpilot/observability';
 import {
   DuplicateSkuError,
   DuplicateWarehouseCodeError,
@@ -68,8 +70,14 @@ interface Problem {
 export class ProblemDetailsFilter implements ExceptionFilter {
   private readonly logger = new Logger(ProblemDetailsFilter.name);
 
+  constructor(@Inject(METRICS) private readonly metrics: Metrics) {}
+
   catch(error: unknown, host: ArgumentsHost): void {
     const problem = this.toProblem(error);
+    this.metrics.problems.inc({
+      status: String(problem.status),
+      title: problem.title,
+    });
     host
       .switchToHttp()
       .getResponse<Response>()

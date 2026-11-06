@@ -1,0 +1,43 @@
+# Mises à jour proposées chaque semaine, regroupées pour rester lisibles. Une mise à jour n'est fusionnée
+# qu'après la CI complète (tests, e2e, charge, sécurité).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Délai avant de proposer une version neuve : laisse le temps de repérer un paquet compromis.
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 5
+    groups:
+      nx-et-outillage:
+        patterns:
+          [
+            'nx',
+            '@nx/*',
+            'typescript*',
+            '@typescript-eslint/*',
+            'eslint*',
+            'jest*',
+            '@swc/*',
+            'prettier',
+          ]
+      nestjs:
+        patterns: ['@nestjs/*']
+      angular:
+        patterns: ['@angular/*']
+      prisma:
+        patterns: ['prisma', '@prisma/*']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14

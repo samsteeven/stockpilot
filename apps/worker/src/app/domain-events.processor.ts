@@ -12,6 +12,7 @@ import {
   OutboxDispatcher,
 } from '@stockpilot/messaging';
 import { NotificationService } from '@stockpilot/notifications';
+import { METRICS, type Metrics } from '@stockpilot/observability';
 import { OrderService } from '@stockpilot/orders';
 import { ShipmentService } from '@stockpilot/shipping';
 import type { Job } from 'bullmq';
@@ -83,12 +84,28 @@ export class DomainEventsProcessor extends WorkerHost {
     private readonly orders: OrderService,
     private readonly shipments: ShipmentService,
     private readonly notifications: NotificationService,
+    @Inject(METRICS) private readonly metrics: Metrics,
   ) {
     super();
   }
 
   async process(job: Job<DomainEvent>): Promise<string[]> {
-    const event = job.data;
+    try {
+      const outcomes = await this.handle(job.data);
+      for (const outcome of outcomes)
+        this.metrics.domainEvents.inc({ type: job.data.type, outcome });
+      return outcomes;
+    } catch (error) {
+      // Rejoué par la file ; le compteur alimente l'alerte « événements en échec ».
+      this.metrics.eventFailures.inc({ type: job.data.type });
+      this.logger.warn(
+        `Événement ${job.data.id} (${job.data.type}, essai ${job.attemptsMade + 1}) : ${(error as Error).message}`,
+      );
+      throw error;
+    }
+  }
+
+  private async handle(event: DomainEvent): Promise<string[]> {
     const outcomes: string[] = [];
     if (event.tenantId && event.type === 'reservation.expired') {
       const reservationId = String(event.payload['reservationId']);

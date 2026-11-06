@@ -1,6 +1,5 @@
 /** Aides des tests HTTP : une API démarrée sur les bases de test, et des comptes inscrits par l'API elle-même. */
 import { randomUUID } from 'node:crypto';
-import type { INestApplication } from '@nestjs/common';
 import { appDatabaseUrl, redisUrl } from '@stockpilot/testing';
 import request from 'supertest';
 import type { ApiConfig } from './config';
@@ -10,7 +9,7 @@ export const PASSWORD = 'mot-de-passe-de-test-solide';
 export const WEBHOOK_SECRET = 'secret-de-test-du-prestataire-de-paiement-0123';
 
 export async function startApi(overrides: Partial<ApiConfig> = {}) {
-  const app: INestApplication = await createApp({
+  const { app, metrics } = await createApp({
     port: 0,
     appDatabaseUrl: appDatabaseUrl(),
     databasePoolSize: 5,
@@ -21,11 +20,12 @@ export async function startApi(overrides: Partial<ApiConfig> = {}) {
     refreshTokenDays: 14,
     cookieSecure: false,
     authRateLimitPerMinute: 10_000,
+    logLevel: 'warn',
     paymentWebhookSecret: WEBHOOK_SECRET,
     ...overrides,
   });
   await app.init();
-  return { app, http: request(app.getHttpServer()) };
+  return { app, metrics, http: request(app.getHttpServer()) };
 }
 
 export type Http = ReturnType<typeof request>;

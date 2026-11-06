@@ -1,5 +1,7 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { AuditModule } from '@stockpilot/audit';
+import { loggingParams, METRICS, Metrics } from '@stockpilot/observability';
+import { LoggerModule } from 'nestjs-pino';
 import { DomainEventsModule } from '@stockpilot/messaging';
 import { NotificationsModule } from '@stockpilot/notifications';
 import { OrdersModule } from '@stockpilot/orders';
@@ -44,10 +46,13 @@ import { API_CONFIG } from './tokens';
 
 @Module({})
 export class AppModule {
-  static forRoot(config: ApiConfig): DynamicModule {
+  static forRoot(config: ApiConfig, metrics: Metrics): DynamicModule {
     return {
       module: AppModule,
       imports: [
+        LoggerModule.forRoot(
+          loggingParams({ service: 'api', level: config.logLevel }),
+        ),
         DatabaseModule.forRoot({
           url: config.appDatabaseUrl,
           poolSize: config.databasePoolSize,
@@ -92,6 +97,7 @@ export class AppModule {
       ],
       providers: [
         { provide: API_CONFIG, useValue: config },
+        { provide: METRICS, useValue: metrics },
         { provide: APP_GUARD, useClass: AccessGuard },
         { provide: APP_FILTER, useClass: ProblemDetailsFilter },
       ],

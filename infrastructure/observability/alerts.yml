@@ -1,0 +1,69 @@
+# Alertes : chacune dit ce qui est cassé pour le client et où regarder. Seuils de départ, à ajuster sur les
+# mesures de production ; testées par `promtool test rules alerts.test.yml`.
+groups:
+  - name: stockpilot
+    rules:
+      - alert: StockPilotProcessusMuet
+        expr: up{job=~"api|worker"} == 0
+        for: 1m
+        labels:
+          severity: critique
+        annotations:
+          summary: '{{ $labels.job }} ne répond plus à Prometheus depuis 1 min'
+          description: 'Processus arrêté ou port de métriques injoignable. Voir les journaux du service.'
+
+      - alert: StockPilotErreursServeur
+        expr: |
+          sum(rate(stockpilot_http_request_duration_seconds_count{status=~"5.."}[5m]))
+            / sum(rate(stockpilot_http_request_duration_seconds_count[5m])) > 0.02
+        for: 5m
+        labels:
+          severity: critique
+        annotations:
+          summary: 'Plus de 2 % de réponses 5xx sur 5 min'
+          description: 'Chercher les lignes de niveau error (même X-Request-Id que la réponse).'
+
+      - alert: StockPilotLenteur
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(stockpilot_http_request_duration_seconds_bucket{route!="unmatched"}[5m]))) > 0.5
+        for: 10m
+        labels:
+          severity: avertissement
+        annotations:
+          summary: '95 % des requêtes au-dessus de 500 ms depuis 10 min'
+          description: 'Comparer avec les résultats k6 de référence (tests/load/RESULTATS.md).'
+
+      - alert: StockPilotOutboxEnRetard
+        expr: stockpilot_outbox_oldest_age_seconds > 60
+        for: 2m
+        labels:
+          severity: critique
+        annotations:
+          summary: 'Un événement attend sa publication depuis plus d’une minute'
+          description: 'Relais du worker arrêté ou Redis injoignable : expéditions et e-mails ne partent plus.'
+
+      - alert: StockPilotEvenementsEnEchec
+        expr: sum by (type) (increase(stockpilot_domain_event_failures_total[10m])) > 5
+        labels:
+          severity: avertissement
+        annotations:
+          summary: '{{ $labels.type }} : plus de 5 échecs en 10 min'
+          description: 'Traitement rejoué par la file ; voir les journaux du worker (serveur SMTP, base).'
+
+      - alert: StockPilotJobsEnEchecDefinitif
+        expr: stockpilot_queue_jobs{state="failed"} > 0
+        for: 15m
+        labels:
+          severity: avertissement
+        annotations:
+          summary: 'File {{ $labels.queue }} : {{ $value }} job(s) en échec définitif'
+          description: 'Tous les essais sont épuisés : à examiner et rejouer à la main.'
+
+      - alert: StockPilotSignaturesRefusees
+        expr: sum(increase(stockpilot_problems_total{title="Signature refusée"}[10m])) > 10
+        labels:
+          severity: avertissement
+        annotations:
+          summary: 'Plus de 10 notifications de paiement mal signées en 10 min'
+          description: 'Secret désynchronisé avec le prestataire, ou tentatives de falsification.'
