@@ -69,7 +69,8 @@ await eventually(
 );
 await eventually(
   'outbox mesurée (et rattrapée)',
-  () => query('stockpilot_outbox_oldest_age_seconds'),
+  // Mesure du worker (l'API déclare la même jauge sans la remplir).
+  () => query('max(stockpilot_outbox_oldest_age_seconds{job="worker"})'),
   (r) => r.length === 1 && value(r) < 60,
 );
 await eventually(
