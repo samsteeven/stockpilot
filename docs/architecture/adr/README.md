@@ -15,3 +15,5 @@ Chaque ADR dit le contexte, les options étudiées, la décision, ses conséquen
 | [009](009-roles-et-permissions.md)           | Entreprises, membres, permissions : adhésion relue à chaque requête, dernier propriétaire protégé par la base      | acceptée, appliquée |
 | [010](010-commandes-idempotence-paiement.md) | Commandes : Idempotency-Key dans la transaction, prix du catalogue, paiement par notification signée, compensation | acceptée, appliquée |
 | [011](011-outbox-et-audit.md)                | Outbox transactionnelle, consommateurs idempotents, journal d'audit en ajout seulement                             | acceptée, appliquée |
+| [012](012-expeditions-et-notifications.md)   | Expéditions créées par le worker, messages aux clients enregistrés puis envoyés hors transaction                   | acceptée, appliquée |
+| [013](013-front-angular-et-cypress.md)       | Front Angular autonome dans le monorepo, session en mémoire et renouvellement unique, tests Cypress                | acceptée, appliquée |

@@ -35,6 +35,12 @@
     },
     {
       "path": "./libs/orders"
+    },
+    {
+      "path": "./libs/shipping"
+    },
+    {
+      "path": "./libs/notifications"
     }
   ],
   "compilerOptions": {}

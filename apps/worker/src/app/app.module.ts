@@ -5,7 +5,9 @@ import {
   ReservationExpiryQueueModule,
 } from '@stockpilot/inventory';
 import { DomainEventsModule } from '@stockpilot/messaging';
+import { NotificationsModule } from '@stockpilot/notifications';
 import { OrdersModule } from '@stockpilot/orders';
+import { ShippingModule } from '@stockpilot/shipping';
 import {
   DomainEventsProcessor,
   OUTBOX_POLL_MS,
@@ -23,6 +25,9 @@ export interface WorkerConfig {
   reservationTtlSeconds: number;
   /** Attente entre deux passages du relais de l'outbox quand il n'y a rien à publier. */
   outboxPollMs: number;
+  /** smtp://hôte:port des messages aux clients ; absent : messages journalisés seulement. */
+  smtpUrl?: string;
+  mailFrom: string;
 }
 
 @Module({})
@@ -40,6 +45,11 @@ export class WorkerModule {
         InventoryModule,
         OrdersModule.forRoot({
           reservationTtlSeconds: config.reservationTtlSeconds,
+        }),
+        ShippingModule,
+        NotificationsModule.forRoot({
+          smtpUrl: config.smtpUrl,
+          mailFrom: config.mailFrom,
         }),
       ],
       providers: [

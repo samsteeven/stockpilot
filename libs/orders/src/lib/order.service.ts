@@ -6,6 +6,7 @@ import {
   type OrderItem,
   type OrderStatusHistory,
   type Payment,
+  type Shipment,
   Prisma,
   TenantDatabase,
   type TenantTransaction,
@@ -66,6 +67,12 @@ export interface OrderView {
     amount: string;
     currency: string;
   } | null;
+  shipment?: {
+    id: string;
+    status: string;
+    carrier: string | null;
+    trackingNumber: string | null;
+  } | null;
   /** Échéance de paiement (celle de la réservation), à la création seulement. */
   payBefore?: string;
 }
@@ -80,6 +87,7 @@ export type OrderDetails = Order & {
   items: OrderItem[];
   history: OrderStatusHistory[];
   payments: Payment[];
+  shipment?: Shipment | null;
 };
 
 /** Consommateur des événements « réservation expirée » (table processed_messages). */
@@ -362,6 +370,7 @@ const ORDER_INCLUDE = {
   items: true,
   history: { orderBy: { createdAt: 'asc' } },
   payments: { orderBy: { createdAt: 'asc' } },
+  shipment: true,
 } as const;
 
 export async function loadOrder(
@@ -401,6 +410,16 @@ export function toView(order: OrderDetails, payBefore?: Date): OrderView {
           currency: payment.currency,
         }
       : null,
+    ...(order.shipment !== undefined
+      ? {
+          shipment: order.shipment && {
+            id: order.shipment.id,
+            status: order.shipment.status,
+            carrier: order.shipment.carrier,
+            trackingNumber: order.shipment.trackingNumber,
+          },
+        }
+      : {}),
     ...(payBefore ? { payBefore: payBefore.toISOString() } : {}),
   };
 }

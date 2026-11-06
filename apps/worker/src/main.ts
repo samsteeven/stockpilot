@@ -14,6 +14,8 @@ function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     redisUrl: required('REDIS_URL'),
     reservationTtlSeconds: Number(env['RESERVATION_TTL_SECONDS'] ?? 900),
     outboxPollMs: Number(env['OUTBOX_POLL_MS'] ?? 500),
+    smtpUrl: env['SMTP_URL'] || undefined,
+    mailFrom: env['MAIL_FROM'] ?? 'StockPilot <no-reply@stockpilot.local>',
   };
 }
 

@@ -11,7 +11,9 @@ import {
   type DomainEvent,
   OutboxDispatcher,
 } from '@stockpilot/messaging';
+import { NotificationService } from '@stockpilot/notifications';
 import { OrderService } from '@stockpilot/orders';
+import { ShipmentService } from '@stockpilot/shipping';
 import type { Job } from 'bullmq';
 
 export const OUTBOX_POLL_MS = Symbol('OUTBOX_POLL_MS');
@@ -69,31 +71,49 @@ export class OutboxRelay
   }
 }
 
-/** Consommateur des événements du domaine. Chaque traitement est idempotent (table processed_messages). */
+/**
+ * Consommateur des événements du domaine. Chaque traitement est idempotent (processed_messages, ou une ligne par
+ * événement pour les messages) : un job rejoué après un échec partiel ne refait pas ce qui a réussi.
+ */
 @Processor(DOMAIN_EVENTS_QUEUE, { concurrency: 8 })
 export class DomainEventsProcessor extends WorkerHost {
   private readonly logger = new Logger(DomainEventsProcessor.name);
 
-  constructor(private readonly orders: OrderService) {
+  constructor(
+    private readonly orders: OrderService,
+    private readonly shipments: ShipmentService,
+    private readonly notifications: NotificationService,
+  ) {
     super();
   }
 
-  async process(job: Job<DomainEvent>): Promise<string> {
+  async process(job: Job<DomainEvent>): Promise<string[]> {
     const event = job.data;
-    if (event.type === 'reservation.expired' && event.tenantId) {
+    const outcomes: string[] = [];
+    if (event.tenantId && event.type === 'reservation.expired') {
+      const reservationId = String(event.payload['reservationId']);
       const outcome = await this.orders.onReservationExpired(
         event.id,
         event.tenantId,
-        String(event.payload['reservationId']),
+        reservationId,
       );
-      if (outcome === 'cancelled') {
+      if (outcome === 'cancelled')
         this.logger.log(
-          `Commande annulée : réservation ${String(event.payload['reservationId'])} expirée`,
+          `Commande annulée : réservation ${reservationId} expirée`,
         );
-      }
-      return outcome;
+      outcomes.push(outcome);
     }
-    // Pas encore de consommateur (notifications à l'incrément 4) : l'événement reste visible dans la file.
-    return 'ignored';
+    if (event.tenantId && event.type === 'order.confirmed') {
+      outcomes.push(
+        await this.shipments.onOrderConfirmed(
+          event.id,
+          event.tenantId,
+          String(event.payload['orderId']),
+        ),
+      );
+    }
+    // Le message au client en dernier : s'il échoue, le job est rejoué sans refaire le reste.
+    outcomes.push(await this.notifications.handle(event));
+    return outcomes;
   }
 }

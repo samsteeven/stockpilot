@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { recordAudit } from '@stockpilot/audit';
+import { type Permission, ROLE_PERMISSIONS } from './permissions.js';
 import {
   isRestrictViolation,
   TenantDatabase,
@@ -31,6 +32,8 @@ export interface TenantView {
   name: string;
   slug: string;
   role: TenantRole;
+  /** Ce que le rôle permet : le front s'en sert pour n'afficher que les actions possibles. */
+  permissions?: Permission[];
 }
 
 /**
@@ -86,6 +89,7 @@ export class MembershipService {
       name: m.tenant.name,
       slug: m.tenant.slug,
       role: m.role,
+      permissions: [...ROLE_PERMISSIONS[m.role]].sort(),
     }));
   }
 
@@ -93,7 +97,13 @@ export class MembershipService {
     const { tenantId, slug } = await this.db.runAs({ userId }, (tx) =>
       createTenantWithOwner(tx, userId, name),
     );
-    return { tenantId, name, slug, role: TenantRole.OWNER };
+    return {
+      tenantId,
+      name,
+      slug,
+      role: TenantRole.OWNER,
+      permissions: [...ROLE_PERMISSIONS.OWNER].sort(),
+    };
   }
 
   async members(tenantId: string): Promise<MemberView[]> {

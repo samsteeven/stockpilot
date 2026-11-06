@@ -53,3 +53,7 @@ libs/database/src/generated/
 
 # Environnement local
 .env
+
+# Angular et Cypress
+.angular
+apps/web-e2e/cypress/screenshots

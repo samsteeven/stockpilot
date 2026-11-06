@@ -43,6 +43,18 @@ enum PaymentStatus {
   REFUND_REQUIRED
 }
 
+enum ShipmentStatus {
+  READY_TO_SHIP
+  SHIPPED
+  DELIVERED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum StockMovementType {
   RECEIPT
   SALE
@@ -64,6 +76,7 @@ model Tenant {
   memberships  TenantMembership[]
   invitations  Invitation[]
   orders       Order[]
+  shipments    Shipment[]
 
   @@map("tenants")
 }
@@ -140,9 +153,10 @@ model Warehouse {
   name      String
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  tenant Tenant      @relation(fields: [tenantId], references: [id])
-  stocks StockItem[]
-  orders Order[]
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  stocks    StockItem[]
+  orders    Order[]
+  shipments Shipment[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -276,6 +290,7 @@ model Order {
   items     OrderItem[]
   history   OrderStatusHistory[]
   payments  Payment[]
+  shipment  Shipment?
 
   @@unique([tenantId, id])
   @@index([tenantId, status, createdAt])
@@ -385,4 +400,48 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@map("audit_logs")
+}
+
+// Une expédition par commande confirmée, créée par le worker à la confirmation.
+model Shipment {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  orderId        String         @map("order_id") @db.Uuid
+  warehouseId    String         @map("warehouse_id") @db.Uuid
+  status         ShipmentStatus @default(READY_TO_SHIP)
+  carrier        String?
+  trackingNumber String?        @map("tracking_number")
+  shippedAt      DateTime?      @map("shipped_at") @db.Timestamptz(3)
+  deliveredAt    DateTime?      @map("delivered_at") @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  order     Order     @relation(fields: [tenantId, orderId], references: [tenantId, id])
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+
+  @@unique([tenantId, orderId])
+  @@unique([tenantId, id])
+  @@index([tenantId, status, createdAt])
+  @@map("shipments")
+}
+
+// Message envoyé au client (e-mail). Une ligne par événement et par modèle : un événement relivré ne renvoie pas.
+model Notification {
+  id        String             @id @default(uuid()) @db.Uuid
+  tenantId  String             @map("tenant_id") @db.Uuid
+  eventId   String             @map("event_id") @db.Uuid
+  template  String
+  recipient String
+  subject   String
+  body      String
+  status    NotificationStatus @default(PENDING)
+  attempts  Int                @default(0)
+  lastError String?            @map("last_error")
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt    DateTime?          @map("sent_at") @db.Timestamptz(3)
+
+  @@unique([eventId, template])
+  @@index([tenantId, createdAt])
+  @@map("notifications")
 }

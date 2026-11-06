@@ -7,3 +7,5 @@
 # Généré
 libs/database/src/generated
 prisma/migrations
+# Angular (cache de compilation) et Cypress (captures)
+.angular

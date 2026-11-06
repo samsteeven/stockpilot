@@ -1,7 +1,9 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { AuditModule } from '@stockpilot/audit';
 import { DomainEventsModule } from '@stockpilot/messaging';
+import { NotificationsModule } from '@stockpilot/notifications';
 import { OrdersModule } from '@stockpilot/orders';
+import { ShippingModule } from '@stockpilot/shipping';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CatalogModule } from '@stockpilot/catalog';
@@ -34,6 +36,10 @@ import {
   OrdersController,
   PaymentsController,
 } from './orders/orders.controller';
+import {
+  NotificationsController,
+  ShipmentsController,
+} from './shipping/shipments.controller';
 import { API_CONFIG } from './tokens';
 
 @Module({})
@@ -65,6 +71,9 @@ export class AppModule {
           paymentWebhookSecret: config.paymentWebhookSecret,
         }),
         AuditModule,
+        ShippingModule,
+        // L'API lit les messages envoyés ; c'est le worker qui les envoie.
+        NotificationsModule.forRoot({ mailFrom: 'StockPilot' }),
       ],
       controllers: [
         HealthController,
@@ -78,6 +87,8 @@ export class AppModule {
         OrdersController,
         PaymentsController,
         AuditController,
+        ShipmentsController,
+        NotificationsController,
       ],
       providers: [
         { provide: API_CONFIG, useValue: config },

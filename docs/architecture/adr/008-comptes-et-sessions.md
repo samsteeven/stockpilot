@@ -16,7 +16,7 @@ Le front Angular doit garder l'utilisateur connecté sans exposer à une faille 
 
 ## Conséquences
 
-- Deux onglets qui renouvellent au même instant présentent le même jeton : le second est traité comme un rejeu et la session tombe. Le front devra sérialiser ses renouvellements (incrément 4).
+- Deux onglets qui renouvellent au même instant présentent le même jeton : le second est traité comme un rejeu et la session tombe. Dans un même onglet, le front sérialise ses renouvellements ([ADR-013](013-front-angular-et-cypress.md)) ; entre deux onglets, le risque demeure.
 - La limite de débit est par instance : avec plusieurs API, il faudra la partager (Redis).
 - Pas d'e-mail : pas de vérification d'adresse ni de réinitialisation de mot de passe pour l'instant.
 - Testé : cookie et ses attributs, rotation, rejeu qui révoque la famille, en-tête anti-CSRF, déconnexion, jeton falsifié ou expiré, limite de débit ; la suppression de chacune de ces protections fait échouer un test.

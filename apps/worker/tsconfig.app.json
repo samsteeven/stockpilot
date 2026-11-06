@@ -23,6 +23,12 @@
   ],
   "references": [
     {
+      "path": "../../libs/notifications/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/shipping/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/messaging/tsconfig.lib.json"
     },
     {

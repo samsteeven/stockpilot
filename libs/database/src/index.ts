@@ -9,6 +9,8 @@ export {
   TenantRole,
   OrderStatus,
   PaymentStatus,
+  ShipmentStatus,
+  NotificationStatus,
 } from './generated/prisma/client.js';
 export type {
   Invitation,
@@ -26,4 +28,6 @@ export type {
   OrderStatusHistory,
   Payment,
   AuditLog,
+  Shipment,
+  Notification,
 } from './generated/prisma/client.js';

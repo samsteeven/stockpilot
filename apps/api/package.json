@@ -83,7 +83,9 @@
     "@stockpilot/catalog": "*",
     "@stockpilot/orders": "*",
     "@stockpilot/messaging": "*",
-    "@stockpilot/audit": "*"
+    "@stockpilot/audit": "*",
+    "@stockpilot/shipping": "*",
+    "@stockpilot/notifications": "*"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.0.0",

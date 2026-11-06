@@ -1,0 +1,21 @@
+{
+  "name": "@stockpilot/web-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "name": "web-e2e",
+    "implicitDependencies": [
+      "web",
+      "api",
+      "worker"
+    ]
+  },
+  "scripts": {
+    "e2e": "cypress run",
+    "e2e:open": "cypress open",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "cypress": "16.2.0"
+  }
+}

@@ -16,6 +16,7 @@ jobs:
     env:
       NX_NO_CLOUD: 'true'
       NX_DAEMON: 'false'
+      CYPRESS_INSTALL_BINARY: '0'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -37,6 +38,7 @@ jobs:
     env:
       NX_NO_CLOUD: 'true'
       NX_DAEMON: 'false'
+      CYPRESS_INSTALL_BINARY: '0'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -44,7 +46,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Moteur de stock, API et worker
+      - name: Moteur de stock, API, worker et front (unitaires)
         run: npx nx run-many -t test --parallel=1
 
   demo:
@@ -55,12 +57,14 @@ jobs:
     env:
       NX_NO_CLOUD: 'true'
       NX_DAEMON: 'false'
+      CYPRESS_INSTALL_BINARY: '0'
       DATABASE_URL: postgresql://stockpilot:stockpilot@127.0.0.1:5437/stockpilot
       APP_DATABASE_URL: postgresql://stockpilot_app:stockpilot_app@127.0.0.1:5437/stockpilot
       REDIS_URL: redis://127.0.0.1:6380
       RESERVATION_TTL_SECONDS: '5'
       JWT_SECRET: secret-de-la-ci-pour-les-jetons-d-acces-0123456789
       PAYMENT_WEBHOOK_SECRET: secret-de-la-ci-du-prestataire-de-paiement-0123
+      SMTP_URL: smtp://127.0.0.1:1025
       COOKIE_SECURE: 'false'
     steps:
       - uses: actions/checkout@v5
@@ -102,3 +106,60 @@ jobs:
       - name: Journaux
         if: always()
         run: tail -n 50 api.log worker.log
+
+  e2e:
+    # Le front Angular dans un vrai navigateur (Cypress), contre l'API et le worker construits, PostgreSQL, Redis
+    # et Mailpit (les e-mails aux clients sont vérifiés dans sa boîte).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NX_NO_CLOUD: 'true'
+      NX_DAEMON: 'false'
+      DATABASE_URL: postgresql://stockpilot:stockpilot@127.0.0.1:5437/stockpilot
+      APP_DATABASE_URL: postgresql://stockpilot_app:stockpilot_app@127.0.0.1:5437/stockpilot
+      REDIS_URL: redis://127.0.0.1:6380
+      JWT_SECRET: secret-de-la-ci-pour-les-jetons-d-acces-0123456789
+      COOKIE_SECURE: 'false'
+      PAYMENT_WEBHOOK_SECRET: secret-de-la-ci-du-prestataire-de-paiement-0123
+      SMTP_URL: smtp://127.0.0.1:1025
+      MAILPIT_URL: http://127.0.0.1:8025
+      # Les tests se connectent souvent : la limite par adresse IP est relevée pour eux seulement.
+      AUTH_RATE_LIMIT_PER_MINUTE: '1000'
+      NG_CLI_ANALYTICS: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+      - run: npx cypress install
+      - name: PostgreSQL, Redis et Mailpit
+        run: |
+          docker compose up -d --wait
+          npx prisma migrate deploy
+          npm run db:seed
+      - name: API, worker et front
+        run: |
+          npx nx run-many -t build -p api worker
+          node apps/api/dist/main.js > api.log 2>&1 &
+          node apps/worker/dist/main.js > worker.log 2>&1 &
+          (cd apps/web && npx ng serve --port 4200 > ../../web.log 2>&1 &)
+          until curl -sf http://127.0.0.1:3000/health/ready > /dev/null; do sleep 1; done
+          until curl -sf http://localhost:4200/ > /dev/null; do sleep 1; done
+      - name: Cypress
+        run: npx cypress run
+        working-directory: apps/web-e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-captures
+          path: apps/web-e2e/cypress/screenshots
+          if-no-files-found: ignore
+      - name: Journaux
+        if: always()
+        run: tail -n 40 api.log worker.log web.log

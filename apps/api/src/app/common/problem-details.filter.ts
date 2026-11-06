@@ -46,6 +46,10 @@ import {
   UnknownVariantError,
   UnknownWarehouseError,
 } from '@stockpilot/orders';
+import {
+  ShipmentNotFoundError,
+  ShipmentStateError,
+} from '@stockpilot/shipping';
 import type { Response } from 'express';
 
 interface Problem {
@@ -144,6 +148,12 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         'Notification de paiement invalide',
       ],
       [PaymentNotFoundError, HttpStatus.NOT_FOUND, 'Paiement inconnu'],
+      [ShipmentNotFoundError, HttpStatus.NOT_FOUND, 'Expédition introuvable'],
+      [
+        ShipmentStateError,
+        HttpStatus.CONFLICT,
+        'Transition d’expédition impossible',
+      ],
       [
         PaymentMismatchError,
         HttpStatus.UNPROCESSABLE_ENTITY,

@@ -1,13 +1,15 @@
 /**
- * Le worker réel, sur une vraie file BullMQ : une réservation expire à son échéance, et le balayage rattrape une
- * réservation dont le job a été perdu.
+ * Le worker réel, sur une vraie file BullMQ et un vrai serveur SMTP (en mémoire) : expiration des réservations,
+ * balayage, outbox, annulation des commandes non payées, expédition créée à la confirmation, e-mails aux clients.
  */
 import { randomUUID } from 'node:crypto';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { PrismaService, TenantDatabase } from '@stockpilot/database';
 import { ReservationService } from '@stockpilot/inventory';
-import { OrderService } from '@stockpilot/orders';
+import { OrderService, PaymentService, signPayload } from '@stockpilot/orders';
+import { ShipmentService } from '@stockpilot/shipping';
+import { SMTPServer } from 'smtp-server';
 import {
   appDatabaseUrl,
   createTenant,
@@ -21,8 +23,44 @@ import { WorkerModule } from './app.module';
 let worker: INestApplicationContext;
 let pool: Pool;
 let prisma: PrismaService;
+let smtp: SMTPServer;
+
+interface ReceivedMail {
+  to: string[];
+  raw: string;
+}
+const inbox: ReceivedMail[] = [];
+/** Nombre de messages que le serveur SMTP refusera encore (panne simulée). */
+let refuseNext = 0;
 
 beforeAll(async () => {
+  smtp = new SMTPServer({
+    authOptional: true,
+    disabledCommands: ['STARTTLS', 'AUTH'],
+    logger: false,
+    onData(stream, session, callback) {
+      let raw = '';
+      stream.on('data', (chunk: Buffer) => (raw += chunk.toString('utf8')));
+      stream.on('end', () => {
+        if (refuseNext > 0) {
+          refuseNext--;
+          const error = new Error('boîte indisponible') as Error & {
+            responseCode: number;
+          };
+          error.responseCode = 451;
+          return callback(error);
+        }
+        inbox.push({
+          to: session.envelope.rcptTo.map((r) => r.address),
+          // Quoted-printable : on recolle les lignes coupées pour chercher dans le texte.
+          raw: raw.replace(/=\r?\n/g, ''),
+        });
+        callback();
+      });
+    },
+  });
+  await new Promise<void>((resolve) => smtp.listen(0, '127.0.0.1', resolve));
+  const smtpPort = (smtp.server.address() as { port: number }).port;
   pool = ownerPool();
   prisma = new PrismaService({ url: appDatabaseUrl(), poolSize: 3 });
   worker = await NestFactory.createApplicationContext(
@@ -32,6 +70,8 @@ beforeAll(async () => {
       redisUrl: redisUrl(),
       reservationTtlSeconds: 900,
       outboxPollMs: 100,
+      smtpUrl: `smtp://127.0.0.1:${smtpPort}`,
+      mailFrom: 'StockPilot <no-reply@stockpilot.test>',
     }),
     { logger: ['error', 'warn'] },
   );
@@ -42,6 +82,7 @@ afterAll(async () => {
   await worker?.close();
   await prisma?.$disconnect();
   await pool?.end();
+  await new Promise<void>((resolve) => smtp?.close(() => resolve()));
 });
 
 async function waitFor<T>(
@@ -158,4 +199,101 @@ it('un événement livré deux fois n’annule qu’une fois', async () => {
     [order.id],
   );
   expect(rows[0].n).toBe(2);
+});
+
+const SECRET = 'secret-de-test-du-prestataire-de-paiement-0123';
+
+/** Commande d'un client, payée : la confirmation part dans l'outbox comme en production. */
+async function paidOrder(email: string) {
+  const t = await createTenant(pool, { 'PAR:CASQUE': 10 });
+  const tenants = new TenantDatabase(prisma);
+  const reservations = worker.get(ReservationService);
+  const orders = new OrderService(tenants, reservations, {
+    reservationTtlSeconds: 900,
+  });
+  const { order } = await orders.place(t.tenantId, randomUUID(), {
+    idempotencyKey: randomUUID(),
+    warehouseId: t.warehouses.PAR,
+    items: [{ variantId: t.variants.CASQUE, quantity: 1 }],
+    customerEmail: email,
+  });
+  const payments = new PaymentService(prisma, tenants, reservations, {
+    reservationTtlSeconds: 900,
+    paymentWebhookSecret: SECRET,
+  });
+  const body = Buffer.from(
+    JSON.stringify({
+      id: `evt_${randomUUID()}`,
+      type: 'payment.succeeded',
+      data: {
+        providerReference: order.payment!.providerReference,
+        amount: order.totalAmount,
+        currency: order.currency,
+      },
+    }),
+  );
+  const { outcome } = await payments.handleNotification(
+    body,
+    signPayload(SECRET, body),
+  );
+  expect(outcome).toBe('confirmed');
+  return { tenantId: t.tenantId, order, orders };
+}
+
+const mailsTo = (email: string) => inbox.filter((m) => m.to.includes(email));
+
+it('commande payée : le worker crée l’expédition et écrit au client ; expédiée : second e-mail avec le suivi', async () => {
+  const email = `client-${randomUUID().slice(0, 8)}@example.com`;
+  const { tenantId, order, orders } = await paidOrder(email);
+  const ref = order.id.slice(0, 8).toUpperCase();
+
+  const withShipment = await waitFor(
+    () => orders.get(tenantId, order.id),
+    (o) => !!o.shipment,
+  );
+  expect(withShipment.shipment?.status).toBe('READY_TO_SHIP');
+  await waitFor(
+    async () => mailsTo(email).length,
+    (n) => n >= 1,
+  );
+  expect(mailsTo(email)[0].raw).toContain(ref);
+
+  await worker
+    .get(ShipmentService)
+    .ship(tenantId, randomUUID(), withShipment.shipment!.id, {
+      carrier: 'Colissimo',
+      trackingNumber: '6A99887766',
+    });
+  await waitFor(
+    async () => mailsTo(email).length,
+    (n) => n >= 2,
+  );
+  expect(mailsTo(email)[1].raw).toContain('6A99887766');
+  const { rows } = await pool.query(
+    'SELECT template, status FROM notifications WHERE tenant_id = $1 ORDER BY created_at',
+    [tenantId],
+  );
+  expect(rows).toEqual([
+    { template: 'order-confirmed', status: 'SENT' },
+    { template: 'shipment-shipped', status: 'SENT' },
+  ]);
+});
+
+it('serveur SMTP en panne : l’échec est noté, le job est rejoué, le client reçoit un seul message', async () => {
+  const email = `client-${randomUUID().slice(0, 8)}@example.com`;
+  refuseNext = 1;
+  const { tenantId } = await paidOrder(email);
+
+  const sent = await waitFor(
+    async () =>
+      (
+        await pool.query(
+          "SELECT status, attempts FROM notifications WHERE tenant_id = $1 AND template = 'order-confirmed'",
+          [tenantId],
+        )
+      ).rows[0],
+    (row) => row?.status === 'SENT',
+  );
+  expect(sent).toEqual({ status: 'SENT', attempts: 2 });
+  expect(mailsTo(email)).toHaveLength(1);
 });

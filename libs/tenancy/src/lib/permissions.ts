@@ -14,7 +14,9 @@ export type Permission =
   | 'members:manage'
   | 'orders:read'
   | 'orders:write'
-  | 'audit:read';
+  | 'audit:read'
+  | 'shipments:write'
+  | 'notifications:read';
 
 const EVERYONE: Permission[] = ['stock:read', 'members:read', 'orders:read'];
 
@@ -28,6 +30,8 @@ export const ROLE_PERMISSIONS: Record<TenantRole, ReadonlySet<Permission>> = {
     'members:manage',
     'orders:write',
     'audit:read',
+    'shipments:write',
+    'notifications:read',
   ]),
   ADMIN: new Set<Permission>([
     ...EVERYONE,
@@ -38,12 +42,15 @@ export const ROLE_PERMISSIONS: Record<TenantRole, ReadonlySet<Permission>> = {
     'members:manage',
     'orders:write',
     'audit:read',
+    'shipments:write',
+    'notifications:read',
   ]),
   WAREHOUSE_MANAGER: new Set<Permission>([
     ...EVERYONE,
     'stock:receive',
     'reservations:write',
     'orders:write',
+    'shipments:write',
   ]),
   OPERATOR: new Set<Permission>([
     ...EVERYONE,
