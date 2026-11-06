@@ -20,6 +20,8 @@ export interface ApiConfig {
   logLevel?: string;
   /** Port des métriques Prometheus (pas exposé au public) ; absent : pas de serveur de métriques. */
   metricsPort?: number;
+  /** Proxys de confiance devant l'API (1 : un répartiteur ; 2 : CloudFront puis le répartiteur). */
+  trustProxyHops?: number;
 }
 
 export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -39,6 +41,7 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     metricsPort: env['METRICS_PORT']
       ? integer(env, 'METRICS_PORT', 9464)
       : undefined,
+    trustProxyHops: integer(env, 'TRUST_PROXY_HOPS', 1),
   };
 }
 

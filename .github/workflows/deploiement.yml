@@ -1,0 +1,134 @@
+name: Déploiement AWS
+
+# Déploiement manuel de l'environnement de démonstration, approuvé dans l'environnement GitHub « aws-demo ».
+# Ordre : images → infrastructure et migrations (version de l'application inchangée) → application → front →
+# vérification sur l'adresse publique. Les migrations sont rétrocompatibles (ajouter avant de retirer) : l'ancienne
+# version de l'application tourne sur le nouveau schéma, ce qui rend le retour arrière possible.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-demo
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-3' }}
+  TAG: ${{ github.sha }}
+  CYPRESS_INSTALL_BINARY: '0'
+  NX_NO_CLOUD: 'true'
+  NX_DAEMON: 'false'
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    environment: aws-demo
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Images de cette version (construites une seule fois, étiquettes immuables)
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          for target in runtime migrate; do
+            repo=stockpilot; [ "$target" = migrate ] && repo=stockpilot-migrate
+            if aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$TAG" > /dev/null 2>&1; then
+              echo "$repo:$TAG existe déjà"
+            else
+              docker buildx build --target "$target" --platform linux/amd64 \
+                --cache-from type=gha,scope=$target --cache-to type=gha,mode=max,scope=$target \
+                --provenance=true --sbom=true \
+                --tag "$REGISTRY/$repo:$TAG" --push .
+            fi
+          done
+      - name: Analyse de l'image (vulnérabilités critiques corrigeables bloquantes)
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY" > /dev/null
+          docker pull -q "$REGISTRY/stockpilot:$TAG" > /dev/null
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.1 image \
+            --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress "$REGISTRY/stockpilot:$TAG"
+
+  deploiement:
+    needs: images
+    runs-on: ubuntu-latest
+    environment: aws-demo
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: infrastructure/aws/terraform
+    env:
+      TF_VAR_alert_email: ${{ vars.ALERT_EMAIL }}
+      TF_IN_AUTOMATION: 'true'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      - name: Terraform init
+        run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="region=$AWS_REGION"
+      - name: Version en service avant ce déploiement
+        id: courante
+        run: |
+          current=$(terraform output -raw app_image_tag 2>/dev/null || true)
+          echo "tag=${current:-$TAG}" >> "$GITHUB_OUTPUT"
+          echo "Version en service : ${current:-aucune (premier déploiement)}"
+      - name: Infrastructure et image de migration (application inchangée)
+        run: >-
+          terraform apply -input=false -auto-approve
+          -var "app_image_tag=${{ steps.courante.outputs.tag }}" -var "migrate_image_tag=$TAG"
+      - name: Migrations, rôles et données de démonstration
+        run: |
+          cluster=$(terraform output -raw cluster)
+          task=$(aws ecs run-task --cluster "$cluster" --launch-type FARGATE \
+            --task-definition "$(terraform output -raw migrate_task_definition)" \
+            --network-configuration "awsvpcConfiguration={subnets=[$(terraform output -raw task_subnets)],securityGroups=[$(terraform output -raw task_security_group)],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Tâche de migration : $task"
+          aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task"
+          code=$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0].containers[0].exitCode' --output text)
+          aws logs tail "$(terraform output -json log_groups | jq -r .migrate)" --since 15m | tail -n 30
+          test "$code" = "0" || { echo "Migration en échec (code $code) : l'application n'est pas mise à jour."; exit 1; }
+      - name: Application (déploiement progressif, retour automatique si la nouvelle version n'est pas saine)
+        run: >-
+          terraform apply -input=false -auto-approve
+          -var "app_image_tag=$TAG" -var "migrate_image_tag=$TAG"
+      - name: Front
+        working-directory: .
+        run: |
+          npm ci --no-audit --no-fund
+          (cd apps/web && npx ng build)
+          bucket=$(terraform -chdir=infrastructure/aws/terraform output -raw web_bucket)
+          # Fichiers à empreinte : en cache un an ; index.html : jamais en cache (il désigne la version courante).
+          aws s3 sync apps/web/dist/web/browser "s3://$bucket" --delete --exclude index.html \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp apps/web/dist/web/browser/index.html "s3://$bucket/index.html" --cache-control "no-cache"
+          aws cloudfront create-invalidation --distribution-id \
+            "$(terraform -chdir=infrastructure/aws/terraform output -raw cloudfront_distribution_id)" --paths /index.html > /dev/null
+      - name: Vérification sur l'adresse publique
+        working-directory: .
+        run: |
+          url=$(terraform -chdir=infrastructure/aws/terraform output -raw url)
+          node scripts/verifier-deploiement.mjs "$url"
+          echo "### StockPilot déployé : $url (version \`${TAG::7}\`)" >> "$GITHUB_STEP_SUMMARY"

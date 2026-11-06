@@ -304,3 +304,74 @@ jobs:
       - name: Journaux
         if: always()
         run: tail -n 30 api.log worker.log
+
+  infrastructure:
+    # Sans compte AWS : Terraform valide, configuration analysée (Trivy), images construites puis démarrées comme en
+    # production (migrations, API et worker depuis les images, système de fichiers en lecture seule), vulnérabilités
+    # et SBOM de l'image.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CYPRESS_INSTALL_BINARY: '0'
+      PAYMENT_WEBHOOK_SECRET: secret-de-la-ci-du-prestataire-de-paiement-0123
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+      - name: Terraform (format et validation)
+        working-directory: infrastructure/aws/terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false > /dev/null
+          terraform validate
+      - name: Configuration analysée (Trivy, élevé et critique bloquants)
+        run: |
+          for target in infrastructure/aws Dockerfile; do
+            docker run --rm -v "$PWD:/src:ro" -w /src aquasec/trivy:0.76.1 config --quiet \
+              --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml --exit-code 1 "$target"
+          done
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Images
+        run: |
+          docker buildx build --target runtime --load --tag stockpilot:ci \
+            --cache-from type=gha,scope=runtime --cache-to type=gha,mode=max,scope=runtime .
+          docker buildx build --target migrate --load --tag stockpilot-migrate:ci \
+            --cache-from type=gha,scope=migrate --cache-to type=gha,mode=max,scope=migrate .
+          docker image ls stockpilot
+      - name: Démarrage depuis les images, comme en production
+        run: |
+          docker compose up -d --wait postgres redis
+          db=postgresql://stockpilot:stockpilot@127.0.0.1:5437/stockpilot
+          docker run --rm --network host -e DATABASE_URL="$db" -e APP_DATABASE_PASSWORD=stockpilot_app \
+            stockpilot-migrate:ci sh -c 'node scripts/preparer-base.mjs && npx prisma migrate deploy && npm run db:seed'
+          common="--network host --read-only --cap-drop ALL --security-opt no-new-privileges
+            -e APP_DATABASE_URL=postgresql://stockpilot_app:stockpilot_app@127.0.0.1:5437/stockpilot
+            -e REDIS_URL=redis://127.0.0.1:6380 -e RESERVATION_TTL_SECONDS=5"
+          docker run -d --name api $common -e PORT=3000 -e METRICS_PORT=9464 -e COOKIE_SECURE=false \
+            -e JWT_SECRET=secret-de-la-ci-pour-les-jetons-d-acces-0123456789 \
+            -e PAYMENT_WEBHOOK_SECRET="$PAYMENT_WEBHOOK_SECRET" stockpilot:ci
+          docker run -d --name worker $common -e METRICS_PORT=9465 stockpilot:ci node worker/main.js
+          until curl -sf http://127.0.0.1:3000/health/ready > /dev/null; do sleep 1; done
+          node scripts/demo-concurrence.mjs http://127.0.0.1:3000
+          node scripts/demo-commande.mjs http://127.0.0.1:3000
+          docker exec api id
+          curl -sf http://127.0.0.1:9465/metrics | grep -c '^stockpilot_'
+      - name: Vulnérabilités de l'image (critiques corrigeables bloquantes) et SBOM
+        run: |
+          trivy="docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $PWD:/out aquasec/trivy:0.76.1"
+          $trivy image --severity HIGH,CRITICAL --ignore-unfixed --no-progress stockpilot:ci
+          $trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress --quiet stockpilot:ci
+          $trivy image --format cyclonedx --output /out/sbom-image.cdx.json --quiet stockpilot:ci
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-image
+          path: sbom-image.cdx.json
+      - name: Journaux des conteneurs
+        if: always()
+        run: docker logs api 2>&1 | tail -n 20; docker logs worker 2>&1 | tail -n 20

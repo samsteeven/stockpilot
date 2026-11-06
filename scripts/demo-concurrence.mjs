@@ -63,7 +63,7 @@ console.log(
 console.log(
   `Après : ${after.onHand} en stock, ${after.reserved} réservés, ${after.available} disponibles`,
 );
-if (byStatus[201] !== before.available || after.available !== 0) {
+if ((byStatus[201] ?? 0) !== before.available || after.available !== 0) {
   console.error(
     'INCOHÉRENCE : le nombre de réservations ne correspond pas au disponible',
   );

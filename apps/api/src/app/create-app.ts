@@ -18,10 +18,11 @@ export async function createApp(
     rawBody: true,
   });
   app.useLogger(app.get(Logger));
-  // Derrière un proxy (ALB, nginx) : l'adresse du client vient de X-Forwarded-For (limite de débit par IP).
+  // Derrière des proxys (CloudFront puis ALB en production) : l'adresse du client vient de X-Forwarded-For ;
+  // seuls les proxys déclarés sont crus, un client ne peut pas se faire passer pour une autre adresse.
   (
     app.getHttpAdapter().getInstance() as { set(k: string, v: unknown): void }
-  ).set('trust proxy', 1);
+  ).set('trust proxy', config.trustProxyHops ?? 1);
   // Durée de chaque requête, par gabarit de route (/api/v1/orders/:id) : pas une série par identifiant.
   app.use((req: Request, res: Response, next: NextFunction) => {
     const end = metrics.httpDuration.startTimer();

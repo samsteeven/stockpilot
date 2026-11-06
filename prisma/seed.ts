@@ -72,10 +72,31 @@ const PRODUCTS = [
   },
 ];
 
+/**
+ * Connexion pg pour les scripts d'exploitation. L'URL peut porter les paramètres TLS de Prisma (sslmode,
+ * sslaccept), que pg interpréterait autrement ; ils sont retirés, et le chiffrement est demandé explicitement
+ * quand l'URL l'exige (RDS impose TLS).
+ */
+export function pgConfig(url: string): {
+  connectionString: string;
+  ssl?: { rejectUnauthorized: boolean };
+} {
+  const parsed = new URL(url);
+  const tls =
+    parsed.searchParams.has('sslmode') &&
+    parsed.searchParams.get('sslmode') !== 'disable';
+  for (const key of ['sslmode', 'sslaccept', 'sslcert', 'sslrootcert'])
+    parsed.searchParams.delete(key);
+  return {
+    connectionString: parsed.toString(),
+    ...(tls ? { ssl: { rejectUnauthorized: false } } : {}),
+  };
+}
+
 async function main(): Promise<void> {
   const url = process.env['DATABASE_URL'];
   if (!url) throw new Error('DATABASE_URL manquante (rôle propriétaire)');
-  const client = new pg.Client({ connectionString: url });
+  const client = new pg.Client(pgConfig(url));
   await client.connect();
   try {
     await client.query('BEGIN');

@@ -1,0 +1,9 @@
+# Exceptions de Trivy, chacune limitée à un fichier et justifiée. Les autres sont écrites à côté de la ressource
+# concernée (commentaires #trivy:ignore dans Terraform).
+misconfigurations:
+  - id: AWS-0132
+    paths:
+      - '**/bootstrap.yml'
+    statement: >-
+      État Terraform chiffré par SSE-S3 (clé gérée par AWS), accès réservé au compte, TLS obligatoire, versions
+      conservées ; une clé KMS dédiée n'ajouterait qu'un coût.

@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  StockPilot, amorçage (une fois par compte) : identité OIDC de GitHub Actions, rôle de déploiement limité au dépôt
+  et à son environnement protégé, compartiment de l'état Terraform, dépôts d'images ECR. Aucune clé d'accès AWS
+  n'est créée ni stockée.
+
+Parameters:
+  GitHubRepository:
+    Type: String
+    Default: samsteeven/stockpilot
+    Description: Dépôt autorisé à déployer (propriétaire/nom).
+  GitHubEnvironment:
+    Type: String
+    Default: aws-demo
+    Description: >-
+      Environnement GitHub (avec approbation obligatoire) depuis lequel les jobs peuvent prendre le rôle.
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+    Description: false si le fournisseur token.actions.githubusercontent.com existe déjà dans ce compte.
+
+Conditions:
+  CreateProvider: !Equals [!Ref CreateOidcProvider, 'true']
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: stockpilot-github-deploy
+      Description: Pris par GitHub Actions (OIDC), depuis l'environnement protégé du dépôt seulement.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepository}:environment:${GitHubEnvironment}
+      ManagedPolicyArns:
+        # Tout sauf IAM et l'organisation : réseau, ECS, RDS, ElastiCache, CloudFront, S3, alarmes…
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: iam-limite-au-projet
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # IAM seulement pour les rôles et politiques du projet (préfixe stockpilot-), créés par Terraform.
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:UpdateRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListInstanceProfilesForRole
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PassRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/stockpilot-*
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    iam:AWSServiceName:
+                      - ecs.amazonaws.com
+                      - elasticache.amazonaws.com
+                      - rds.amazonaws.com
+                      - elasticloadbalancing.amazonaws.com
+
+  # Chiffrement SSE-S3 (clé gérée par AWS) ; accès limité au rôle et au compte, TLS obligatoire.
+  TerraformStateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub stockpilot-tfstate-${AWS::AccountId}-${AWS::Region}
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: anciennes-versions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
+
+  TerraformStateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TerraformStateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: TlsSeulement
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt TerraformStateBucket.Arn
+              - !Sub ${TerraformStateBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  RuntimeRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: stockpilot
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: >-
+          {"rules":[{"rulePriority":1,"description":"10 dernières images","selection":{"tagStatus":"any",
+          "countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}
+
+  MigrateRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: stockpilot-migrate
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: >-
+          {"rules":[{"rulePriority":1,"description":"10 dernières images","selection":{"tagStatus":"any",
+          "countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}
+
+Outputs:
+  DeployRoleArn:
+    Description: À copier dans la variable GitHub AWS_ROLE_ARN.
+    Value: !GetAtt DeployRole.Arn
+  TerraformStateBucket:
+    Description: À copier dans la variable GitHub TF_STATE_BUCKET.
+    Value: !Ref TerraformStateBucket
+  RuntimeRepositoryUri:
+    Value: !GetAtt RuntimeRepository.RepositoryUri
+  MigrateRepositoryUri:
+    Value: !GetAtt MigrateRepository.RepositoryUri

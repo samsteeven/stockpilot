@@ -1,0 +1,15 @@
+# Le contexte de construction ne contient que le code : pas de dépendances, de sorties, de secrets ni d'historique.
+.git
+.github
+.nx
+**/node_modules
+**/dist
+**/out-tsc
+**/.angular
+**/test-output
+apps/web-e2e/cypress/screenshots
+.env
+.env.*
+!.env.example
+*.log
+infrastructure/terraform/.terraform

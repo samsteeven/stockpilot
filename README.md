@@ -4,6 +4,8 @@ Plateforme SaaS B2B de gestion des stocks, des commandes et des expéditions, en
 
 > **État : incrément 5.** Journaux JSON corrélés et métriques Prometheus (API et worker), alertes testées, tableau de bord Grafana ; **tests de charge k6** (aucune survente sous rafale, limite d'une instance mesurée et expliquée) ; sécurité de la chaîne d'approvisionnement (audit bloquant, SBOM, licences, signatures, actions épinglées, secrets, CodeQL). Avant : expéditions, e-mails, front Angular et Cypress (4) ; commandes, paiement signé, outbox, audit (3) ; comptes et rôles (2) ; moteur de stock et Row-Level Security (1). Voir [la feuille de route](#feuille-de-route).
 
+> **Incrément 6 en cours** : déploiement sur AWS écrit et vérifié sans compte (Terraform validé, configuration analysée, images construites puis démarrées comme en production dans la CI) ; exécution réelle et scénarios de panne : voir [docs/exploitation](docs/exploitation/README.md).
+
 ## Le cœur : 20 commandes pour 5 unités
 
 ```text
@@ -121,6 +123,9 @@ libs/testing      bases réelles pour les tests, données de test
 prisma/           schéma, migrations (CHECK, RLS, déclencheurs, fonctions), données de démonstration
 infrastructure/   Prometheus (alertes et leurs tests), Grafana (tableau de bord provisionné)
 tests/load/       tests de charge k6 et résultats de référence
+infrastructure/aws/  amorçage (CloudFormation : OIDC, état, ECR) et Terraform (ECS, RDS, ElastiCache, CloudFront)
+Dockerfile        image de l'API et du worker, image de migration
+docs/exploitation/   déploiement, retour arrière, pannes provoquées, restauration
 ```
 
 ```
@@ -216,14 +221,14 @@ Pour réutiliser les services de `docker compose` : `STOCKPILOT_TEST_DATABASE_UR
 
 ## Feuille de route
 
-| Incrément | Contenu                                                                                                                                                                                   | État     |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| 1         | Socle Nx, PostgreSQL et Redis, Prisma et migrations, moteur de stock (réservation atomique, confirmation, expiration BullMQ, RLS), API et worker, tests de concurrence et d'isolation, CI | **fait** |
-| 2         | Identité (JWT, renouvellement à rotation, Argon2id), entreprises, membres, invitations, rôles et permissions ; catalogue et entrepôts                                                     | **fait** |
-| 3         | Commandes, Idempotency-Key, paiement simulé, outbox, compensation, audit                                                                                                                  | **fait** |
-| 4         | Expéditions, notifications, front Angular, tests Cypress                                                                                                                                  | **fait** |
-| 5         | Observabilité, tests de charge k6, sécurité de la chaîne (scans, SBOM)                                                                                                                    | **fait** |
-| 6         | Terraform AWS, **déploiement réel**, panne provoquée, restauration et retour arrière documentés                                                                                           | à faire  |
+| Incrément | Contenu                                                                                                                                                                                   | État                                                           |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1         | Socle Nx, PostgreSQL et Redis, Prisma et migrations, moteur de stock (réservation atomique, confirmation, expiration BullMQ, RLS), API et worker, tests de concurrence et d'isolation, CI | **fait**                                                       |
+| 2         | Identité (JWT, renouvellement à rotation, Argon2id), entreprises, membres, invitations, rôles et permissions ; catalogue et entrepôts                                                     | **fait**                                                       |
+| 3         | Commandes, Idempotency-Key, paiement simulé, outbox, compensation, audit                                                                                                                  | **fait**                                                       |
+| 4         | Expéditions, notifications, front Angular, tests Cypress                                                                                                                                  | **fait**                                                       |
+| 5         | Observabilité, tests de charge k6, sécurité de la chaîne (scans, SBOM)                                                                                                                    | **fait**                                                       |
+| 6         | Terraform AWS, **déploiement réel**, panne provoquée, restauration et retour arrière documentés                                                                                           | **en cours** : infrastructure prête, exécution sur AWS à venir |
 
 ## Limites actuelles
 
