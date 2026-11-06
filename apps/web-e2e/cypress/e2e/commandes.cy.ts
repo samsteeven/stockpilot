@@ -129,7 +129,10 @@ describe('Commandes', () => {
           cy.get('[data-cy=carrier]').type('Colissimo');
           cy.get('[data-cy=tracking]').type('6A1234567890');
           cy.get('[data-cy=ship]').click();
-          cy.get('[data-cy=shipment-status]').should('contain.text', 'Expédiée');
+          cy.get('[data-cy=shipment-status]').should(
+            'contain.text',
+            'Expédiée',
+          );
           cy.get('[data-cy=deliver]').click();
           cy.get('[data-cy=shipment-status]').should('contain.text', 'Livrée');
         });
