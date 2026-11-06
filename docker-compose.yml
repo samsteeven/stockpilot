@@ -40,7 +40,7 @@ services:
 
   # Faux serveur SMTP : les e-mails aux clients arrivent ici, visibles sur http://localhost:8025.
   mailpit:
-    image: axllent/mailpit:v1.31
+    image: axllent/mailpit:v1.32
     container_name: stockpilot-mailpit
     environment:
       MP_MAX_MESSAGES: 500
