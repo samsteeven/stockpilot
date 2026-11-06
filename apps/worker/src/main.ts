@@ -12,6 +12,8 @@ function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     appDatabaseUrl: required('APP_DATABASE_URL'),
     databasePoolSize: Number(env['DATABASE_POOL_SIZE'] ?? 5),
     redisUrl: required('REDIS_URL'),
+    reservationTtlSeconds: Number(env['RESERVATION_TTL_SECONDS'] ?? 900),
+    outboxPollMs: Number(env['OUTBOX_POLL_MS'] ?? 500),
   };
 }
 

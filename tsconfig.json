@@ -26,6 +26,15 @@
     },
     {
       "path": "./libs/catalog"
+    },
+    {
+      "path": "./libs/messaging"
+    },
+    {
+      "path": "./libs/audit"
+    },
+    {
+      "path": "./libs/orders"
     }
   ],
   "compilerOptions": {}

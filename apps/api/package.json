@@ -80,7 +80,10 @@
     "@stockpilot/inventory": "*",
     "@stockpilot/identity": "*",
     "@stockpilot/tenancy": "*",
-    "@stockpilot/catalog": "*"
+    "@stockpilot/catalog": "*",
+    "@stockpilot/orders": "*",
+    "@stockpilot/messaging": "*",
+    "@stockpilot/audit": "*"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.0.0",

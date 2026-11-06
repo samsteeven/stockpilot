@@ -9,6 +9,17 @@ import {
 export interface VariantInput {
   sku: string;
   name: string;
+  /** Prix unitaire, décimal en chaîne (« 129.90 ») : jamais de nombre flottant pour de l'argent. */
+  unitPrice?: string;
+  currency?: string;
+}
+
+export interface VariantView {
+  id: string;
+  sku: string;
+  name: string;
+  unitPrice: string;
+  currency: string;
 }
 
 export interface ProductView {
@@ -17,7 +28,7 @@ export interface ProductView {
   name: string;
   active: boolean;
   createdAt: Date;
-  variants: { id: string; sku: string; name: string }[];
+  variants: VariantView[];
 }
 
 export interface WarehouseView {
@@ -56,6 +67,7 @@ export class CatalogService {
             productId: product.id,
             sku: v.sku.trim(),
             name: v.name.trim(),
+            ...price(v),
           })),
         });
         return view(
@@ -90,6 +102,7 @@ export class CatalogService {
             productId,
             sku: variant.sku.trim(),
             name: variant.name.trim(),
+            ...price(variant),
           },
         });
         return view(
@@ -171,7 +184,13 @@ function view(product: {
   name: string;
   active: boolean;
   createdAt: Date;
-  variants: { id: string; sku: string; name: string }[];
+  variants: {
+    id: string;
+    sku: string;
+    name: string;
+    unitPrice: { toFixed(digits: number): string };
+    currency: string;
+  }[];
 }): ProductView {
   return {
     id: product.id,
@@ -183,7 +202,20 @@ function view(product: {
       id: v.id,
       sku: v.sku,
       name: v.name,
+      unitPrice: v.unitPrice.toFixed(2),
+      currency: v.currency,
     })),
+  };
+}
+
+function price(variant: VariantInput) {
+  return {
+    ...(variant.unitPrice !== undefined
+      ? { unitPrice: variant.unitPrice }
+      : {}),
+    ...(variant.currency !== undefined
+      ? { currency: variant.currency.toUpperCase() }
+      : {}),
   };
 }
 

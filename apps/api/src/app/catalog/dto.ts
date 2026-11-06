@@ -23,6 +23,15 @@ export class VariantDto {
   @IsString()
   @Length(1, 200)
   name!: string;
+
+  /** Prix unitaire en chaîne décimale (« 129.90 »). */
+  @IsOptional()
+  @Matches(/^\d{1,10}(\.\d{1,2})?$/)
+  unitPrice?: string;
+
+  @IsOptional()
+  @Matches(/^[A-Za-z]{3}$/)
+  currency?: string;
 }
 
 export class CreateProductDto {

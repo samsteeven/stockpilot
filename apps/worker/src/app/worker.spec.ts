@@ -7,6 +7,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { PrismaService, TenantDatabase } from '@stockpilot/database';
 import { ReservationService } from '@stockpilot/inventory';
+import { OrderService } from '@stockpilot/orders';
 import {
   appDatabaseUrl,
   createTenant,
@@ -29,6 +30,8 @@ beforeAll(async () => {
       appDatabaseUrl: appDatabaseUrl(),
       databasePoolSize: 3,
       redisUrl: redisUrl(),
+      reservationTtlSeconds: 900,
+      outboxPollMs: 100,
     }),
     { logger: ['error', 'warn'] },
   );
@@ -103,4 +106,56 @@ it('le balayage expire une réservation dont le job a été perdu', async () => 
     onHand: 10,
     reserved: 0,
   });
+});
+
+it('réservation expirée : l’événement passe par l’outbox et la file, et la commande est annulée', async () => {
+  const t = await createTenant(pool, { 'PAR:CASQUE': 10 });
+  // Délai de paiement d'une seconde ; la réservation est planifiée dans la vraie file du worker.
+  const orders = new OrderService(
+    new TenantDatabase(prisma),
+    worker.get(ReservationService),
+    { reservationTtlSeconds: 1 },
+  );
+  const { order } = await orders.place(t.tenantId, randomUUID(), {
+    idempotencyKey: randomUUID(),
+    warehouseId: t.warehouses.PAR,
+    items: [{ variantId: t.variants.CASQUE, quantity: 2 }],
+  });
+
+  const cancelled = await waitFor(
+    () => orders.get(t.tenantId, order.id),
+    (o) => o.status !== 'PENDING_PAYMENT',
+  );
+
+  expect(cancelled.status).toBe('CANCELLED');
+  expect(cancelled.cancelReason).toBe('reservation_expired');
+  expect(cancelled.history.map((h) => h.toStatus)).toEqual([
+    'PENDING_PAYMENT',
+    'CANCELLED',
+  ]);
+  expect(await stockOf(pool, t.stockItems['PAR:CASQUE'])).toEqual({
+    onHand: 10,
+    reserved: 0,
+  });
+});
+
+it('un événement livré deux fois n’annule qu’une fois', async () => {
+  const t = await createTenant(pool, { 'PAR:CASQUE': 10 });
+  const orders = worker.get(OrderService);
+  const { order } = await orders.place(t.tenantId, randomUUID(), {
+    idempotencyKey: randomUUID(),
+    warehouseId: t.warehouses.PAR,
+    items: [{ variantId: t.variants.CASQUE, quantity: 1 }],
+  });
+  const eventId = randomUUID();
+  const outcomes = await Promise.all([
+    orders.onReservationExpired(eventId, t.tenantId, order.reservationId!),
+    orders.onReservationExpired(eventId, t.tenantId, order.reservationId!),
+  ]);
+  expect(outcomes.sort()).toEqual(['cancelled', 'duplicate']);
+  const { rows } = await pool.query(
+    'SELECT count(*)::int AS n FROM order_status_history WHERE order_id = $1',
+    [order.id],
+  );
+  expect(rows[0].n).toBe(2);
 });

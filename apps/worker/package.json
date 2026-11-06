@@ -77,7 +77,9 @@
     "rxjs": "^7.8.0",
     "tslib": "^2.3.0",
     "@stockpilot/database": "*",
-    "@stockpilot/inventory": "*"
+    "@stockpilot/inventory": "*",
+    "@stockpilot/orders": "*",
+    "@stockpilot/messaging": "*"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.0.0",

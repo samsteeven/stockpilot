@@ -29,6 +29,20 @@ enum ReservationStatus {
   EXPIRED
 }
 
+enum OrderStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  // Payé alors que la commande ne pouvait plus être honorée (réservation expirée) : à rembourser.
+  REFUND_REQUIRED
+}
+
 enum StockMovementType {
   RECEIPT
   SALE
@@ -49,6 +63,7 @@ model Tenant {
   reservations Reservation[]
   memberships  TenantMembership[]
   invitations  Invitation[]
+  orders       Order[]
 
   @@map("tenants")
 }
@@ -127,6 +142,7 @@ model Warehouse {
 
   tenant Tenant      @relation(fields: [tenantId], references: [id])
   stocks StockItem[]
+  orders Order[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -151,14 +167,18 @@ model Product {
 }
 
 model ProductVariant {
-  id        String @id @default(uuid()) @db.Uuid
-  tenantId  String @map("tenant_id") @db.Uuid
-  productId String @map("product_id") @db.Uuid
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
   sku       String
   name      String
+  // Prix unitaire en vigueur ; une commande en garde une copie (le prix peut changer ensuite).
+  unitPrice Decimal @default(0) @map("unit_price") @db.Decimal(14, 2)
+  currency  String  @default("EUR") @db.Char(3)
 
-  product Product     @relation(fields: [tenantId, productId], references: [tenantId, id])
-  stocks  StockItem[]
+  product    Product     @relation(fields: [tenantId, productId], references: [tenantId, id])
+  stocks     StockItem[]
+  orderItems OrderItem[]
 
   @@unique([tenantId, sku])
   @@unique([tenantId, id])
@@ -234,4 +254,135 @@ model StockMovement {
 
   @@index([tenantId, stockItemId, createdAt])
   @@map("stock_movements")
+}
+
+model Order {
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  warehouseId   String      @map("warehouse_id") @db.Uuid
+  status        OrderStatus @default(PENDING_PAYMENT)
+  currency      String      @db.Char(3)
+  totalAmount   Decimal     @map("total_amount") @db.Decimal(14, 2)
+  customerEmail String?     @map("customer_email")
+  reservationId String?     @map("reservation_id") @db.Uuid
+  createdBy     String      @map("created_by") @db.Uuid
+  // Pourquoi la commande a été annulée (paiement refusé, réservation expirée, annulation manuelle).
+  cancelReason  String?     @map("cancel_reason")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant    Tenant               @relation(fields: [tenantId], references: [id])
+  warehouse Warehouse            @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  items     OrderItem[]
+  history   OrderStatusHistory[]
+  payments  Payment[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, status, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  orderId   String  @map("order_id") @db.Uuid
+  variantId String  @map("variant_id") @db.Uuid
+  quantity  Int
+  unitPrice Decimal @map("unit_price") @db.Decimal(14, 2)
+
+  order   Order          @relation(fields: [tenantId, orderId], references: [tenantId, id])
+  variant ProductVariant @relation(fields: [tenantId, variantId], references: [tenantId, id])
+
+  @@unique([orderId, variantId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id         String       @id @default(uuid()) @db.Uuid
+  tenantId   String       @map("tenant_id") @db.Uuid
+  orderId    String       @map("order_id") @db.Uuid
+  fromStatus OrderStatus? @map("from_status")
+  toStatus   OrderStatus  @map("to_status")
+  reason     String?
+  // Absent quand le système agit seul (paiement reçu, réservation expirée).
+  actorId    String?      @map("actor_id") @db.Uuid
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  order Order @relation(fields: [tenantId, orderId], references: [tenantId, id])
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+model Payment {
+  id                String        @id @default(uuid()) @db.Uuid
+  tenantId          String        @map("tenant_id") @db.Uuid
+  orderId           String        @map("order_id") @db.Uuid
+  status            PaymentStatus @default(PENDING)
+  amount            Decimal       @db.Decimal(14, 2)
+  currency          String        @db.Char(3)
+  // Référence chez le prestataire, envoyée dans ses notifications.
+  providerReference String        @unique @map("provider_reference")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  settledAt         DateTime?     @map("settled_at") @db.Timestamptz(3)
+
+  order Order @relation(fields: [tenantId, orderId], references: [tenantId, id])
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+// Idempotency-Key : la réponse d'une création réussie est gardée et rejouée à l'identique pour la même clé.
+model IdempotencyKey {
+  tenantId       String   @map("tenant_id") @db.Uuid
+  key            String
+  // Empreinte de la requête : la même clé avec une autre requête est refusée.
+  requestHash    String   @map("request_hash")
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([tenantId, key])
+  @@map("idempotency_keys")
+}
+
+// Outbox : l'événement est écrit dans la transaction du changement qu'il annonce, puis publié par le worker.
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  tenantId      String?   @map("tenant_id") @db.Uuid
+  type          String
+  payload       Json
+  correlationId String?   @map("correlation_id")
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(3)
+  attempts      Int       @default(0)
+  lastError     String?   @map("last_error")
+
+  @@index([occurredAt])
+  @@map("outbox_events")
+}
+
+// Messages déjà traités, par consommateur : un événement livré deux fois n'a d'effet qu'une fois.
+model ProcessedMessage {
+  consumer    String
+  messageId   String   @map("message_id")
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
+
+  @@id([consumer, messageId])
+  @@map("processed_messages")
+}
+
+// Journal des actions sensibles : écrit dans la transaction de l'action, jamais modifié.
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  actorId      String?  @map("actor_id") @db.Uuid
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  details      Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
 }

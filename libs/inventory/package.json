@@ -16,7 +16,8 @@
     "name": "inventory"
   },
   "dependencies": {
-    "@stockpilot/database": "*"
+    "@stockpilot/database": "*",
+    "@stockpilot/messaging": "*"
   },
   "devDependencies": {
     "@stockpilot/testing": "*"

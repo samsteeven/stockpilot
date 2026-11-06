@@ -8,7 +8,7 @@ Une personne peut appartenir à plusieurs entreprises, avec un rôle différent 
 
 ## Décision
 
-- **Rôles** : propriétaire, administrateur, responsable d'entrepôt, opérateur, lecteur. Ils accordent des **permissions** (`stock:read`, `stock:receive`, `reservations:write`, `catalog:write`, `warehouses:write`, `members:read`, `members:manage`) ; une route déclare la permission qu'elle exige.
+- **Rôles** : propriétaire, administrateur, responsable d'entrepôt, opérateur, lecteur. Ils accordent des **permissions** (`stock:read`, `stock:receive`, `reservations:write`, `catalog:write`, `warehouses:write`, `members:read`, `members:manage`, et depuis l'incrément 3 `orders:read` pour tous, `orders:write` pour tous sauf le lecteur, `audit:read` pour le propriétaire et l'administrateur) ; une route déclare la permission qu'elle exige.
 - **Un seul garde global**, dans cet ordre : jeton valide (sauf route publique) ; pour une route d'entreprise, `X-Tenant-Id` désigne l'entreprise choisie, et l'adhésion est **relue en base à chaque requête** ; la permission est accordée par le rôle. Pas membre : 404, comme une entreprise inexistante. Rôle insuffisant : 403. Une route d'entreprise sans permission déclarée est refusée.
 - **Règles de rôle** (dans le service, en plus de la permission) : un administrateur gère les membres, mais ne nomme pas de propriétaire et ne modifie ni ne retire un propriétaire. Tout membre peut se retirer lui-même.
 - **Dernier propriétaire** : un déclencheur de contrainte, vérifié au COMMIT, refuse toute modification ou suppression qui laisserait une entreprise sans propriétaire, quelle que soit la requête.

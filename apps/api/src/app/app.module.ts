@@ -1,4 +1,7 @@
 import { DynamicModule, Module } from '@nestjs/common';
+import { AuditModule } from '@stockpilot/audit';
+import { DomainEventsModule } from '@stockpilot/messaging';
+import { OrdersModule } from '@stockpilot/orders';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CatalogModule } from '@stockpilot/catalog';
@@ -26,6 +29,11 @@ import {
   InventoryController,
   ReservationsController,
 } from './inventory/inventory.controller';
+import {
+  AuditController,
+  OrdersController,
+  PaymentsController,
+} from './orders/orders.controller';
 import { API_CONFIG } from './tokens';
 
 @Module({})
@@ -51,6 +59,12 @@ export class AppModule {
         TenancyModule,
         CatalogModule,
         InventoryModule,
+        DomainEventsModule.forRoot(),
+        OrdersModule.forRoot({
+          reservationTtlSeconds: config.reservationTtlSeconds,
+          paymentWebhookSecret: config.paymentWebhookSecret,
+        }),
+        AuditModule,
       ],
       controllers: [
         HealthController,
@@ -61,6 +75,9 @@ export class AppModule {
         WarehousesController,
         InventoryController,
         ReservationsController,
+        OrdersController,
+        PaymentsController,
+        AuditController,
       ],
       providers: [
         { provide: API_CONFIG, useValue: config },

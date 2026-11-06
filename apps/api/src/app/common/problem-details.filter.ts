@@ -34,6 +34,18 @@ import {
   ReservationNotFoundError,
   UnknownStockItemError,
 } from '@stockpilot/inventory';
+import {
+  IdempotencyKeyReuseError,
+  InvalidPaymentEventError,
+  InvalidSignatureError,
+  MixedCurrencyError,
+  OrderNotCancellableError,
+  OrderNotFoundError,
+  PaymentMismatchError,
+  PaymentNotFoundError,
+  UnknownVariantError,
+  UnknownWarehouseError,
+} from '@stockpilot/orders';
 import type { Response } from 'express';
 
 interface Problem {
@@ -102,6 +114,40 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         DuplicateWarehouseCodeError,
         HttpStatus.CONFLICT,
         'Code d’entrepôt déjà utilisé',
+      ],
+      [OrderNotFoundError, HttpStatus.NOT_FOUND, 'Commande introuvable'],
+      [
+        OrderNotCancellableError,
+        HttpStatus.CONFLICT,
+        'Commande plus annulable',
+      ],
+      [
+        IdempotencyKeyReuseError,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'Clé d’idempotence déjà utilisée pour une autre requête',
+      ],
+      [UnknownVariantError, HttpStatus.UNPROCESSABLE_ENTITY, 'Article inconnu'],
+      [
+        UnknownWarehouseError,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'Entrepôt inconnu',
+      ],
+      [
+        MixedCurrencyError,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'Plusieurs devises dans une commande',
+      ],
+      [InvalidSignatureError, HttpStatus.UNAUTHORIZED, 'Signature refusée'],
+      [
+        InvalidPaymentEventError,
+        HttpStatus.BAD_REQUEST,
+        'Notification de paiement invalide',
+      ],
+      [PaymentNotFoundError, HttpStatus.NOT_FOUND, 'Paiement inconnu'],
+      [
+        PaymentMismatchError,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'Montant ou devise inattendus',
       ],
     ];
     for (const [type, status, title] of table) {

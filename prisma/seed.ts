@@ -31,12 +31,14 @@ const PRODUCTS = [
         id: '0a1e5c3e-5b7a-4c1e-9f00-0000000000c1',
         sku: 'CASQUE-ANC-NOIR',
         name: 'Noir',
+        price: '129.90',
         stock: { PAR: 5, LYO: 12, BDX: 0 },
       },
       {
         id: '0a1e5c3e-5b7a-4c1e-9f00-0000000000c2',
         sku: 'CASQUE-ANC-BLANC',
         name: 'Blanc',
+        price: '129.90',
         stock: { PAR: 2, LYO: 0, BDX: 7 },
       },
     ],
@@ -50,6 +52,7 @@ const PRODUCTS = [
         id: '0a1e5c3e-5b7a-4c1e-9f00-0000000000c3',
         sku: 'CABLE-USBC-2M',
         name: '2 m',
+        price: '12.50',
         stock: { PAR: 140, LYO: 80, BDX: 60 },
       },
     ],
@@ -92,8 +95,17 @@ async function main(): Promise<void> {
       );
       for (const variant of product.variants) {
         await client.query(
-          'INSERT INTO product_variants (id, tenant_id, product_id, sku, name) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING',
-          [variant.id, TENANT, product.id, variant.sku, variant.name],
+          `INSERT INTO product_variants (id, tenant_id, product_id, sku, name, unit_price, currency)
+           VALUES ($1, $2, $3, $4, $5, $6, 'EUR')
+           ON CONFLICT (id) DO UPDATE SET unit_price = EXCLUDED.unit_price`,
+          [
+            variant.id,
+            TENANT,
+            product.id,
+            variant.sku,
+            variant.name,
+            variant.price,
+          ],
         );
         for (const [code, quantity] of Object.entries(variant.stock)) {
           const warehouseId = WAREHOUSES[code as keyof typeof WAREHOUSES].id;

@@ -14,6 +14,8 @@ export interface ApiConfig {
   cookieSecure: boolean;
   /** Tentatives d'inscription et de connexion par minute et par adresse IP. */
   authRateLimitPerMinute: number;
+  /** Secret partagé avec le prestataire de paiement, 32 caractères au moins. */
+  paymentWebhookSecret: string;
 }
 
 export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -28,6 +30,7 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     refreshTokenDays: integer(env, 'REFRESH_TOKEN_DAYS', 14),
     cookieSecure: env['COOKIE_SECURE'] !== 'false',
     authRateLimitPerMinute: integer(env, 'AUTH_RATE_LIMIT_PER_MINUTE', 10),
+    paymentWebhookSecret: required(env, 'PAYMENT_WEBHOOK_SECRET'),
   };
 }
 

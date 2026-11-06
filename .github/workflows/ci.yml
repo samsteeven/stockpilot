@@ -60,6 +60,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6380
       RESERVATION_TTL_SECONDS: '5'
       JWT_SECRET: secret-de-la-ci-pour-les-jetons-d-acces-0123456789
+      PAYMENT_WEBHOOK_SECRET: secret-de-la-ci-du-prestataire-de-paiement-0123
       COOKIE_SECURE: 'false'
     steps:
       - uses: actions/checkout@v5
@@ -96,6 +97,8 @@ jobs:
             sleep 1
           done
           echo "les réservations n'ont pas expiré"; exit 1
+      - name: Commande, paiement signé, refus, expiration et paiement tardif
+        run: node scripts/demo-commande.mjs http://127.0.0.1:3000
       - name: Journaux
         if: always()
         run: tail -n 50 api.log worker.log

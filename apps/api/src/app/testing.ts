@@ -7,6 +7,7 @@ import type { ApiConfig } from './config';
 import { createApp } from './create-app';
 
 export const PASSWORD = 'mot-de-passe-de-test-solide';
+export const WEBHOOK_SECRET = 'secret-de-test-du-prestataire-de-paiement-0123';
 
 export async function startApi(overrides: Partial<ApiConfig> = {}) {
   const app: INestApplication = await createApp({
@@ -20,6 +21,7 @@ export async function startApi(overrides: Partial<ApiConfig> = {}) {
     refreshTokenDays: 14,
     cookieSecure: false,
     authRateLimitPerMinute: 10_000,
+    paymentWebhookSecret: WEBHOOK_SECRET,
     ...overrides,
   });
   await app.init();

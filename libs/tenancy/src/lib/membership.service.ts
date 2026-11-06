@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import { recordAudit } from '@stockpilot/audit';
 import {
   isRestrictViolation,
   TenantDatabase,
@@ -124,6 +125,14 @@ export class MembershipService {
         data: { role },
         include: { user: { select: { email: true } } },
       });
+      await recordAudit(tx, {
+        tenantId,
+        actorId: actor.userId,
+        action: 'member.role_changed',
+        resourceType: 'member',
+        resourceId: userId,
+        details: { from: target.role, to: role },
+      });
       return {
         userId,
         email: updated.user.email,
@@ -140,6 +149,14 @@ export class MembershipService {
       if (userId !== actor.userId) assertMayManage(actor, target.role);
       await tx.tenantMembership.delete({
         where: { tenantId_userId: { tenantId, userId } },
+      });
+      await recordAudit(tx, {
+        tenantId,
+        actorId: actor.userId,
+        action: userId === actor.userId ? 'member.left' : 'member.removed',
+        resourceType: 'member',
+        resourceId: userId,
+        details: { role: target.role },
       });
     });
   }

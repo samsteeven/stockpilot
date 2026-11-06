@@ -7,6 +7,8 @@ export {
   ReservationStatus,
   StockMovementType,
   TenantRole,
+  OrderStatus,
+  PaymentStatus,
 } from './generated/prisma/client.js';
 export type {
   Invitation,
@@ -19,4 +21,9 @@ export type {
   ReservationItem,
   StockItem,
   StockMovement,
+  Order,
+  OrderItem,
+  OrderStatusHistory,
+  Payment,
+  AuditLog,
 } from './generated/prisma/client.js';

@@ -8,6 +8,8 @@ import type { ApiConfig } from './config';
 export async function createApp(config: ApiConfig): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule.forRoot(config), {
     logger: ['error', 'warn', 'log'],
+    // Corps brut conservé : la signature du prestataire de paiement porte sur les octets reçus, pas sur le JSON relu.
+    rawBody: true,
   });
   // Derrière un proxy (ALB, nginx) : l'adresse du client vient de X-Forwarded-For (limite de débit par IP).
   (

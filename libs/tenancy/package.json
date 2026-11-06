@@ -16,7 +16,8 @@
     "name": "tenancy"
   },
   "dependencies": {
-    "@stockpilot/database": "*"
+    "@stockpilot/database": "*",
+    "@stockpilot/audit": "*"
   },
   "devDependencies": {
     "@stockpilot/testing": "*"

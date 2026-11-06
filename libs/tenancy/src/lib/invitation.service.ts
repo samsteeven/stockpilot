@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import { recordAudit } from '@stockpilot/audit';
 import {
   isUniqueViolation,
   PrismaService,
@@ -49,8 +50,8 @@ export class InvitationService {
     }
     const token = randomBytes(32).toString('base64url');
     const normalized = email.trim().toLowerCase();
-    const invitation = await this.db.run(tenantId, (tx) =>
-      tx.invitation.create({
+    const invitation = await this.db.run(tenantId, async (tx) => {
+      const created = await tx.invitation.create({
         data: {
           tenantId,
           email: normalized,
@@ -59,8 +60,17 @@ export class InvitationService {
           invitedBy: actor.userId,
           expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
         },
-      }),
-    );
+      });
+      await recordAudit(tx, {
+        tenantId,
+        actorId: actor.userId,
+        action: 'invitation.created',
+        resourceType: 'invitation',
+        resourceId: created.id,
+        details: { email: normalized, role },
+      });
+      return created;
+    });
     return {
       invitationId: invitation.id,
       email: normalized,
@@ -107,6 +117,14 @@ export class InvitationService {
           if (consumed === 0) throw new InvitationInvalidError('used');
           await tx.tenantMembership.create({
             data: { tenantId: found.tenant_id, userId, role: found.role },
+          });
+          await recordAudit(tx, {
+            tenantId: found.tenant_id,
+            actorId: userId,
+            action: 'invitation.accepted',
+            resourceType: 'invitation',
+            resourceId: found.id,
+            details: { role: found.role },
           });
           return { tenantId: found.tenant_id, role: found.role };
         },
