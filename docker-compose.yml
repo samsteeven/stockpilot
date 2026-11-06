@@ -52,7 +52,7 @@ services:
   # Prometheus (http://localhost:9090) lit les métriques de l'API (9464) et du worker (9465) lancés sur l'hôte ;
   # Grafana (http://localhost:3001, sans connexion en local) affiche le tableau de bord StockPilot.
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     container_name: stockpilot-prometheus
     profiles: [observabilite]
     command:
