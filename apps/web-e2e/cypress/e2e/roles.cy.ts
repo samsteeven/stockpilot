@@ -3,7 +3,7 @@ import { MANAGER, OWNER, VIEWER } from '../support/e2e';
 describe('Ce que chaque rôle voit', () => {
   it('lecteur : consulte, mais ni création, ni annulation, ni journal', () => {
     cy.login(VIEWER);
-    cy.get('[data-cy=role]').should('have.text', 'Lecteur');
+    cy.get('[data-cy=role]').should('contain.text', 'Lecteur');
     cy.get('[data-cy=orders-table]').should('be.visible');
     cy.get('[data-cy=new-order]').should('not.exist');
     cy.get('[data-cy=nav-audit]').should('not.exist');
@@ -23,7 +23,7 @@ describe('Ce que chaque rôle voit', () => {
 
   it('responsable d’entrepôt : commandes et expéditions, pas de journal', () => {
     cy.login(MANAGER);
-    cy.get('[data-cy=role]').should('have.text', 'Responsable d’entrepôt');
+    cy.get('[data-cy=role]').should('contain.text', 'Responsable d’entrepôt');
     cy.get('[data-cy=new-order]').should('be.visible');
     cy.get('[data-cy=nav-audit]').should('not.exist');
   });

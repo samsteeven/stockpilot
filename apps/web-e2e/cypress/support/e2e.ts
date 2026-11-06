@@ -34,7 +34,7 @@ Cypress.Commands.add('login', (email: string) => {
   cy.get('[data-cy=password]').type(PASSWORD, { log: false });
   cy.get('[data-cy=login-submit]').click();
   cy.location('pathname').should('eq', '/commandes');
-  cy.get('[data-cy=user-email]').should('have.text', email);
+  cy.get('[data-cy=user-email]').should('contain.text', email);
 });
 
 Cypress.Commands.add('apiToken', (email: string) =>

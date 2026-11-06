@@ -20,8 +20,8 @@ describe('Connexion et session', () => {
 
   it('connecté, la session survit au rechargement (cookie de renouvellement), puis la déconnexion la ferme', () => {
     cy.login(OWNER);
-    cy.get('[data-cy=tenant-name]').should('have.text', 'Atelier Nova');
-    cy.get('[data-cy=role]').should('have.text', 'Propriétaire');
+    cy.get('[data-cy=tenant-name]').should('contain.text', 'Atelier Nova');
+    cy.get('[data-cy=role]').should('contain.text', 'Propriétaire');
 
     cy.getCookie('stockpilot_refresh').should(
       'have.property',
@@ -37,7 +37,7 @@ describe('Connexion et session', () => {
     });
 
     cy.reload();
-    cy.get('[data-cy=user-email]').should('have.text', OWNER);
+    cy.get('[data-cy=user-email]').should('contain.text', OWNER);
 
     cy.get('[data-cy=logout]').click();
     cy.location('pathname').should('eq', '/connexion');

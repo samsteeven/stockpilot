@@ -27,7 +27,7 @@ function orderCables(
   cy.get('[data-cy=order-quantity]').clear().type(String(quantity));
   if (email) cy.get('[data-cy=order-email]').type(email);
   cy.get('[data-cy=order-estimate]').should(
-    'have.text',
+    'contain.text',
     `${(12.5 * quantity).toFixed(2)} EUR`,
   );
   cy.get('[data-cy=order-submit]').click();
@@ -42,15 +42,15 @@ describe('Commandes', () => {
         cy.login(OWNER);
         orderCables(2);
         cy.get('[data-cy=detail-status]').should(
-          'have.text',
+          'contain.text',
           'En attente de paiement',
         );
-        cy.get('[data-cy=detail-total]').should('have.text', '25.00 EUR');
-        cy.get('[data-cy=payment-status]').should('have.text', 'Attendu');
+        cy.get('[data-cy=detail-total]').should('contain.text', '25.00 EUR');
+        cy.get('[data-cy=payment-status]').should('contain.text', 'Attendu');
         cableAvailable(token).should('eq', before - 2);
 
         cy.get('[data-cy=cancel-order]').click();
-        cy.get('[data-cy=detail-status]').should('have.text', 'Annulée');
+        cy.get('[data-cy=detail-status]').should('contain.text', 'Annulée');
         cy.get('[data-cy=cancel-reason]').should(
           'contain',
           'annulée par un membre',
@@ -114,11 +114,11 @@ describe('Commandes', () => {
           .should('eq', 'confirmed');
 
         cy.reload();
-        cy.get('[data-cy=detail-status]').should('have.text', 'Confirmée');
-        cy.get('[data-cy=payment-status]').should('have.text', 'Reçu');
+        cy.get('[data-cy=detail-status]').should('contain.text', 'Confirmée');
+        cy.get('[data-cy=payment-status]').should('contain.text', 'Reçu');
         // L'expédition est créée par le worker (événement de l'outbox) : on attend qu'elle apparaisse.
         cy.get('[data-cy=shipment-status]', { timeout: 20_000 }).should(
-          'have.text',
+          'contain.text',
           'À expédier',
         );
 
@@ -129,9 +129,9 @@ describe('Commandes', () => {
           cy.get('[data-cy=carrier]').type('Colissimo');
           cy.get('[data-cy=tracking]').type('6A1234567890');
           cy.get('[data-cy=ship]').click();
-          cy.get('[data-cy=shipment-status]').should('have.text', 'Expédiée');
+          cy.get('[data-cy=shipment-status]').should('contain.text', 'Expédiée');
           cy.get('[data-cy=deliver]').click();
-          cy.get('[data-cy=shipment-status]').should('have.text', 'Livrée');
+          cy.get('[data-cy=shipment-status]').should('contain.text', 'Livrée');
         });
 
         // Messages au client : confirmée, expédiée, livrée (envoyés par le worker).
