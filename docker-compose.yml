@@ -72,7 +72,7 @@ services:
       - ./infrastructure/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
 
   grafana:
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.3.0
     container_name: stockpilot-grafana
     profiles: [observabilite]
     environment:
